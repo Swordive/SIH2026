@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Inspections — Smart Monitoring &amp; Inspection System</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="mark-row">
+      <div class="mark">SM</div>
+      <span>Smart Monitoring<br />&amp; Inspection</span>
+    </div>
+
+    <nav>
+      <a href="index.html">Projects</a>
+      <a href="inspections.html" class="active">Inspections</a>
+      <a href="#" title="Coming next">Live Monitoring</a>
+      <a href="#" title="Coming next">Users</a>
+    </nav>
+
+    <div class="user-box">
+      <span class="name" id="user-name">Loading…</span>
+      <span id="user-role"></span>
+      <button id="logout-btn">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header>
+      <h1>Inspections</h1>
+      <button class="btn-primary" id="run-assignment-btn" style="width:auto; padding:10px 18px;">
+        Run random assignment
+      </button>
+    </header>
+
+    <p class="run-status" id="run-status" style="display:none; margin-top:-14px; margin-bottom:20px; font-size:0.88rem;"></p>
+
+    <div class="card">
+      <table id="inspections-table">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Inspector</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Assigned by</th>
+            <th>Scheduled</th>
+          </tr>
+        </thead>
+        <tbody id="inspections-body"></tbody>
+      </table>
+      <div class="empty-state" id="empty-state" style="display:none;">
+        <h3>No inspections yet</h3>
+        <p>Run the random assignment engine, or create one manually via the API.</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/inspections.js"></script>
+</body>
+</html>

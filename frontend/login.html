@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sign in — Smart Monitoring &amp; Inspection System</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="login-shell">
+  <div class="login-brand">
+    <div class="mark">SM</div>
+    <div>
+      <h1>Smart Real-Time Monitoring &amp; Inspection</h1>
+      <p>
+        Live CCTV integration, random inspection assignment, and
+        geo-tagged reporting for projects, institutes and NGOs
+        running under DoSJE schemes.
+      </p>
+    </div>
+    <div class="foot">
+      Ministry of Social Justice and Empowerment<br />
+      Department of Social Justice and Empowerment
+    </div>
+  </div>
+
+  <div class="login-form-wrap">
+    <form class="login-form" id="login-form">
+      <h2>Sign in</h2>
+      <p class="sub">Enter your credentials to access the dashboard.</p>
+
+      <div class="form-error" id="form-error"></div>
+
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" required autocomplete="username" />
+      </div>
+
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" required autocomplete="current-password" />
+      </div>
+
+      <button type="submit" class="btn-primary" id="submit-btn">Sign in</button>
+
+      <div class="switch-link">
+        Don't have an account? <button type="button" id="show-register">Register</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/login.js"></script>
+</body>
+</html>

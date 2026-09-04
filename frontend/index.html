@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard — Smart Monitoring &amp; Inspection System</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="mark-row">
+      <div class="mark">SM</div>
+      <span>Smart Monitoring<br />&amp; Inspection</span>
+    </div>
+
+    <nav>
+      <a href="index.html" class="active">Projects</a>
+      <a href="inspections.html">Inspections</a>
+      <a href="#" title="Coming next">Live Monitoring</a>
+      <a href="#" title="Coming next">Users</a>
+    </nav>
+
+    <div class="user-box">
+      <span class="name" id="user-name">username</span>
+      <span id="user-role"></span>
+      <button id="logout-btn">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header>
+      <h1>Projects &amp; Institutes</h1>
+      <span class="meta" id="project-count"></span>
+    </header>
+
+    <div class="card">
+      <table id="projects-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Scheme</th>
+            <th>Location</th>
+            <th>CCTV Feed</th>
+          </tr>
+        </thead>
+        <tbody id="projects-body"></tbody>
+      </table>
+      <div class="empty-state" id="empty-state" style="display:none;">
+        <h3>No projects yet</h3>
+        <p>Projects and institutes registered under DoSJE schemes will appear here.</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
