@@ -18,12 +18,12 @@
     <nav>
       <a href="index.html" class="active">Projects</a>
       <a href="inspections.html">Inspections</a>
-      <a href="#" title="Coming next">Live Monitoring</a>
+      <a href="live-monitoring.html">Live Monitoring</a>
       <a href="#" title="Coming next">Users</a>
     </nav>
 
     <div class="user-box">
-      <span class="name" id="user-name">username</span>
+      <span class="name" id="user-name">Loading…</span>
       <span id="user-role"></span>
       <button id="logout-btn">Sign out</button>
     </div>
@@ -32,8 +32,45 @@
   <main class="main">
     <header>
       <h1>Projects &amp; Institutes</h1>
-      <span class="meta" id="project-count"></span>
+      <div style="display:flex; align-items:center; gap:14px;">
+        <span class="meta" id="project-count"></span>
+        <button class="quick-add-toggle" id="toggle-add-form">+ Add project</button>
+      </div>
     </header>
+
+    <form class="quick-add-form" id="add-project-form">
+      <div class="grid">
+        <div class="field">
+          <label for="p-name">Name</label>
+          <input type="text" id="p-name" required />
+        </div>
+        <div class="field">
+          <label for="p-type">Type</label>
+          <select id="p-type">
+            <option value="project">Project</option>
+            <option value="institute">Institute</option>
+            <option value="ngo">NGO</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="p-scheme">Scheme name</label>
+          <input type="text" id="p-scheme" />
+        </div>
+        <div class="field">
+          <label for="p-address">Address</label>
+          <input type="text" id="p-address" />
+        </div>
+        <div class="field" style="grid-column: 1 / -1;">
+          <label for="p-cctv">CCTV feed URL (HLS .m3u8, or a YouTube live link for testing)</label>
+          <input type="text" id="p-cctv" placeholder="https://example.com/stream.m3u8" />
+        </div>
+      </div>
+      <div class="form-error" id="add-project-error"></div>
+      <div class="actions">
+        <button type="submit" class="btn-primary" id="add-project-submit">Create project</button>
+        <button type="button" class="quick-add-toggle" id="cancel-add-form">Cancel</button>
+      </div>
+    </form>
 
     <div class="card">
       <table id="projects-table">
@@ -44,6 +81,7 @@
             <th>Scheme</th>
             <th>Location</th>
             <th>CCTV Feed</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody id="projects-body"></tbody>

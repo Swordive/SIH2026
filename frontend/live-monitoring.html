@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Live Monitoring — Smart Monitoring &amp; Inspection System</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="mark-row">
+      <div class="mark">SM</div>
+      <span>Smart Monitoring<br />&amp; Inspection</span>
+    </div>
+
+    <nav>
+      <a href="index.html">Projects</a>
+      <a href="inspections.html">Inspections</a>
+      <a href="live-monitoring.html" class="active">Live Monitoring</a>
+      <a href="#" title="Coming next">Users</a>
+    </nav>
+
+    <div class="user-box">
+      <span class="name" id="user-name">Loading…</span>
+      <span id="user-role"></span>
+      <button id="logout-btn">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header>
+      <h1>Live Monitoring</h1>
+      <span class="meta" id="feed-count"></span>
+    </header>
+
+    <div class="feed-grid" id="feed-grid"></div>
+
+    <div class="empty-state" id="empty-state" style="display:none;">
+      <h3>No CCTV feeds configured</h3>
+      <p>Add a feed URL when creating or editing a project to see it appear here.</p>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
+<script src="js/api.js"></script>
+<script src="js/live-monitoring.js"></script>
+</body>
+</html>

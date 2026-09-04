@@ -15,6 +15,18 @@ class ProjectCreate(BaseModel):
     incharge_id: uuid.UUID | None = None
 
 
+class ProjectUpdate(BaseModel):
+    """All fields optional -- only the ones sent get changed."""
+    name: str | None = None
+    entity_type: EntityType | None = None
+    scheme_name: str | None = None
+    address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    cctv_feed_url: str | None = None
+    incharge_id: uuid.UUID | None = None
+
+
 class ProjectOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

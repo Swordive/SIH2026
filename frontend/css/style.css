@@ -332,3 +332,146 @@ tr:last-child td { border-bottom: none; }
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { display: none; }
 }
+
+/* ---------- Live monitoring grid ---------- */
+
+.feed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.feed-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.feed-video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #0B1220;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.feed-video-wrap video, .feed-video-wrap iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  object-fit: cover;
+}
+
+.feed-placeholder {
+  color: #5B6472;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 20px;
+}
+
+.live-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 4px 8px;
+  border-radius: 3px;
+  z-index: 2;
+}
+
+.live-badge .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red-accent);
+  animation: pulse-dot 1.6s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.feed-info {
+  padding: 14px 16px;
+}
+
+.feed-info h3 {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  margin: 0 0 4px;
+}
+
+.feed-info p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+/* ---------- Quick add-project form ---------- */
+
+.quick-add-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--navy);
+  padding: 9px 16px;
+  border-radius: 4px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.quick-add-toggle:hover { background: #EEF1F6; }
+
+.quick-add-form {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px 22px;
+  margin-bottom: 24px;
+  display: none;
+}
+
+.quick-add-form.open { display: block; }
+
+.quick-add-form .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.quick-add-form .actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.quick-add-form .actions .btn-primary {
+  width: auto;
+  padding: 10px 18px;
+}
+
+.row-action {
+  background: none;
+  border: none;
+  color: var(--navy);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0;
+  margin-right: 14px;
+  text-decoration: underline;
+}
+
+.row-action.danger {
+  color: var(--red-accent);
+}
