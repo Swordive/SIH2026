@@ -14,6 +14,11 @@ async function loadUser() {
     const me = await apiFetch("/api/auth/me");
     document.getElementById("user-name").textContent = me.full_name;
     document.getElementById("user-role").textContent = ROLE_LABELS[me.role] || me.role;
+
+    const liveMonitoringLink = document.querySelector('a[href="live-monitoring.html"]');
+    if (liveMonitoringLink && me.role !== "admin") {
+      liveMonitoringLink.style.display = "none";
+    }
   } catch (err) {
     clearToken();
     window.location.href = "login.html";
@@ -130,7 +135,10 @@ async function loadFeeds() {
   const countEl = document.getElementById("feed-count");
 
   try {
-    const projects = await apiFetch("/api/projects");
+    // Admin-only endpoint -- returns 403 for every other role. Live
+    // camera feeds are restricted to admins, unlike general project
+    // info (GET /api/projects), which more roles can see.
+    const projects = await apiFetch("/api/projects/cctv-feeds");
     const withFeeds = projects.filter((p) => p.cctv_feed_url);
 
     countEl.textContent = `${withFeeds.length} of ${projects.length} projects have a live feed`;
@@ -160,7 +168,15 @@ async function loadFeeds() {
       }
     });
   } catch (err) {
-    countEl.textContent = "Could not load projects";
+    // A 403 here means the signed-in user isn't an admin -- live
+    // monitoring is admin-only. Show a clear message instead of a
+    // blank/broken page.
+    emptyState.style.display = "block";
+    emptyState.innerHTML = `
+      <h3>Access restricted</h3>
+      <p>${err.message.includes("permission") ? "Live camera monitoring is available to administrators only." : err.message}</p>
+    `;
+    countEl.textContent = "";
   }
 }
 

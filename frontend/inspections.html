@@ -32,12 +32,57 @@
   <main class="main">
     <header>
       <h1>Inspections</h1>
-      <button class="btn-primary" id="run-assignment-btn" style="width:auto; padding:10px 18px;">
-        Run random assignment
-      </button>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button class="quick-add-toggle" id="toggle-manual-form">+ Add inspection</button>
+        <button class="btn-primary" id="run-assignment-btn" style="width:auto; padding:10px 18px;">
+          Run random assignment
+        </button>
+      </div>
     </header>
 
     <p class="run-status" id="run-status" style="display:none; margin-top:-14px; margin-bottom:20px; font-size:0.88rem;"></p>
+
+    <form class="quick-add-form" id="manual-add-form">
+      <div class="grid">
+        <div class="field">
+          <label for="manual-project">Project</label>
+          <select id="manual-project" required>
+            <option value="">Select a project…</option>
+          </select>
+        </div>
+      </div>
+      <p style="margin:0 0 14px; font-size:0.82rem; color:var(--muted);">
+        Adds one unassigned inspection (random type) for this project, even if it already has a recent inspection. Assign an inspector and date/time for it afterward.
+      </p>
+      <div class="form-error" id="manual-add-error"></div>
+      <div class="actions">
+        <button type="submit" class="btn-primary" id="manual-add-submit">Add inspection</button>
+        <button type="button" class="quick-add-toggle" id="manual-add-cancel">Cancel</button>
+      </div>
+    </form>
+
+    <form class="quick-add-form" id="assign-form">
+      <p style="margin:0 0 14px; font-size:0.9rem; color:var(--muted);">
+        Assign an inspector and date/time to: <strong id="assign-project-name"></strong>
+      </p>
+      <div class="grid">
+        <div class="field">
+          <label for="assign-inspector">Inspector</label>
+          <select id="assign-inspector" required>
+            <option value="">Select an inspector…</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="assign-datetime">Date &amp; time</label>
+          <input type="datetime-local" id="assign-datetime" required />
+        </div>
+      </div>
+      <div class="form-error" id="assign-error"></div>
+      <div class="actions">
+        <button type="submit" class="btn-primary" id="assign-submit">Save assignment</button>
+        <button type="button" class="quick-add-toggle" id="assign-cancel">Cancel</button>
+      </div>
+    </form>
 
     <div class="card">
       <table id="inspections-table">
@@ -49,6 +94,7 @@
             <th>Status</th>
             <th>Assigned by</th>
             <th>Scheduled</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody id="inspections-body"></tbody>

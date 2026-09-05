@@ -16,6 +16,14 @@ class InspectionReportSubmit(BaseModel):
     report_longitude: float
 
 
+class InspectionAssign(BaseModel):
+    """Used by an admin/department official to assign an inspector
+    and a date/time to an inspection the random-assignment engine
+    already created (unassigned)."""
+    inspector_id: uuid.UUID
+    scheduled_at: datetime
+
+
 class InspectionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

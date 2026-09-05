@@ -30,6 +30,24 @@ def list_projects(db: Session = Depends(get_db), _user: User = Depends(get_curre
     return db.query(Project).order_by(Project.created_at.desc()).all()
 
 
+@router.get("/cctv-feeds", response_model=list[ProjectOut])
+def list_cctv_feeds(
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_roles(UserRole.ADMIN)),
+):
+    """
+    Admin-only: returns all projects (including their CCTV feed URLs)
+    for the Live Monitoring dashboard. Deliberately restricted to the
+    admin role alone -- department officials, inspectors, and project
+    incharges cannot view live camera feeds, even though they can see
+    general project info via GET /api/projects.
+
+    Must be defined BEFORE the /{project_id} route below, or FastAPI
+    would try to parse "cctv-feeds" as a project_id UUID and 422.
+    """
+    return db.query(Project).order_by(Project.created_at.desc()).all()
+
+
 @router.get("/{project_id}", response_model=ProjectOut)
 def get_project(
     project_id: uuid.UUID,

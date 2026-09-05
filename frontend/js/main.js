@@ -25,6 +25,13 @@ async function loadUser() {
     document.getElementById("toggle-add-form").style.display = canManageProjects
       ? "inline-block"
       : "none";
+
+    // Live camera monitoring is admin-only (enforced server-side too --
+    // this just avoids showing a dead-end link to everyone else).
+    const liveMonitoringLink = document.querySelector('a[href="live-monitoring.html"]');
+    if (liveMonitoringLink && me.role !== "admin") {
+      liveMonitoringLink.style.display = "none";
+    }
   } catch (err) {
     // Token invalid/expired -> back to login
     clearToken();
