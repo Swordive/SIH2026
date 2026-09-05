@@ -77,8 +77,18 @@ def create_inspection(
 
 
 @router.get("", response_model=list[InspectionOut])
-def list_inspections(db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
-    return db.query(Inspection).order_by(Inspection.created_at.desc()).all()
+def list_inspections(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    query = db.query(Inspection)
+
+    # PMU inspectors only see inspections assigned to them -- never
+    # anyone else's. Every other role (admin, department official,
+    # project incharge) continues to see the full list.
+    if current_user.role == UserRole.PMU_INSPECTOR:
+        query = query.filter(Inspection.inspector_id == current_user.id)
+
+    return query.order_by(Inspection.created_at.desc()).all()
 
 
 @router.patch("/{inspection_id}/assign", response_model=InspectionOut)
@@ -147,6 +157,14 @@ def submit_report(
     inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
+
+    if (
+        current_user.role == UserRole.PMU_INSPECTOR
+        and inspection.inspector_id != current_user.id
+    ):
+        raise HTTPException(
+            status_code=403, detail="This inspection is not assigned to you"
+        )
 
     inspection.report_text = payload.report_text
     inspection.report_latitude = payload.report_latitude

@@ -29,10 +29,14 @@ let userMap = {};
 let inspectorOptions = []; // [{id, full_name}]
 let canManage = false;
 let assigningInspectionId = null;
+let currentUserId = null;
+let currentUserName = null;
 
 async function loadUser() {
   try {
     const me = await apiFetch("/api/auth/me");
+    currentUserId = me.id;
+    currentUserName = me.full_name;
     document.getElementById("user-name").textContent = me.full_name;
     document.getElementById("user-role").textContent = ROLE_LABELS[me.role] || me.role;
     canManage = me.role === "admin" || me.role === "department_official";
@@ -74,6 +78,15 @@ function formatDate(iso) {
   return new Date(iso).toLocaleString();
 }
 
+function inspectorDisplayName(inspectorId) {
+  if (userMap[inspectorId]) return userMap[inspectorId];
+  // PMU inspectors can't fetch /api/users (admin/dept-official only),
+  // so userMap is empty for them -- fall back to their own identity
+  // for their own rows, which is the only case they'll ever see now.
+  if (inspectorId === currentUserId && currentUserName) return currentUserName;
+  return inspectorId;
+}
+
 function actionsCell(inspection) {
   if (!canManage) return "—";
   const assignLabel = inspection.inspector_id ? "Reassign" : "Assign";
@@ -104,7 +117,7 @@ async function loadInspections() {
       .map((i) => `
       <tr>
         <td>${projectMap[i.project_id] || i.project_id}</td>
-        <td>${i.inspector_id ? (userMap[i.inspector_id] || i.inspector_id) : "Unassigned"}</td>
+        <td>${i.inspector_id ? inspectorDisplayName(i.inspector_id) : "Unassigned"}</td>
         <td>${TYPE_LABELS[i.inspection_type] || i.inspection_type}</td>
         <td>${STATUS_LABELS[i.status] || i.status}</td>
         <td>${i.ai_assigned ? "AI / automation" : "Manual"}</td>
