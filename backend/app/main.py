@@ -1,13 +1,15 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
 from app.database import Base, engine, SessionLocal
 from app import models  # noqa: F401  (ensures all models are registered on Base)
-from app.api.routes import auth, users, projects, inspections
+from app.api.routes import auth, users, projects, inspections, dashboard
 from app.services.assignment import run_random_assignment
 
 scheduler = BackgroundScheduler()
@@ -60,8 +62,21 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(projects.router)
 app.include_router(inspections.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/api/health")
 def health_check():
     return {"status": "ok", "app": settings.APP_NAME}
+
+
+# Serve the frontend directly from FastAPI so the whole app is one
+# process on one origin -- needed both to avoid the dual-server CORS
+# dance during local dev, and critically so that a single tunnel
+# (ngrok/cloudflared) can expose the WHOLE app to remote visitors,
+# not just a static frontend that can't reach its own API.
+# Mounted LAST so it only catches requests that didn't match an
+# /api/... route above. html=True makes "/" serve index.html.
+FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
+if FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

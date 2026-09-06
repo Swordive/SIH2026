@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard — Smart Monitoring &amp; Inspection System</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="mark-row">
+      <div class="mark">SM</div>
+      <span>Smart Monitoring<br />&amp; Inspection</span>
+    </div>
+
+    <nav>
+      <a href="dashboard.html" class="active">Dashboard</a>
+      <a href="index.html">Projects</a>
+      <a href="inspections.html">Inspections</a>
+      <a href="live-monitoring.html">Live Monitoring</a>
+      <a href="#" title="Coming next">Users</a>
+    </nav>
+
+    <div class="user-box">
+      <span class="name" id="user-name">Loading…</span>
+      <span id="user-role"></span>
+      <button id="logout-btn">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header>
+      <h1>Dashboard</h1>
+      <span class="meta" id="last-updated"></span>
+    </header>
+
+    <div id="dashboard-error" class="form-error" style="display:none;"></div>
+
+    <h2 class="stats-section-title">Overview</h2>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="value" id="stat-total-projects">—</div>
+        <div class="label">Total projects &amp; institutes</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="stat-live-feeds">—</div>
+        <div class="label">Projects with a live CCTV feed</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="stat-active-users">—</div>
+        <div class="label">Active users</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="stat-total-inspections">—</div>
+        <div class="label">Total inspections</div>
+      </div>
+    </div>
+
+    <h2 class="stats-section-title">Inspections by status</h2>
+    <div class="stats-grid">
+      <div class="stat-card status-pending">
+        <div class="value" id="stat-pending">—</div>
+        <div class="label">Pending</div>
+      </div>
+      <div class="stat-card">
+        <div class="value" id="stat-in-progress">—</div>
+        <div class="label">In progress</div>
+      </div>
+      <div class="stat-card status-completed">
+        <div class="value" id="stat-completed">—</div>
+        <div class="label">Completed</div>
+      </div>
+      <div class="stat-card status-missed">
+        <div class="value" id="stat-missed">—</div>
+        <div class="label">Missed</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/dashboard.js"></script>
+</body>
+</html>

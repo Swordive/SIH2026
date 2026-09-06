@@ -461,6 +461,48 @@ tr:last-child td { border-bottom: none; }
   padding: 10px 18px;
 }
 
+/* ---------- Dashboard stats ---------- */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 18px;
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px 22px;
+}
+
+.stat-card .value {
+  font-family: var(--font-display);
+  font-size: 2.2rem;
+  font-weight: 600;
+  color: var(--navy);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.stat-card .label {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.stat-card.status-pending .value { color: var(--pending); }
+.stat-card.status-completed .value { color: var(--success); }
+.stat-card.status-missed .value { color: var(--red-accent); }
+
+.stats-section-title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  margin: 32px 0 14px;
+  color: var(--text);
+}
+
+.stats-section-title:first-child { margin-top: 0; }
+
 .row-action {
   background: none;
   border: none;

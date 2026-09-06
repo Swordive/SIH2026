@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     # --- Database ---
     # Example: postgresql+psycopg2://user:password@localhost:5432/sih_monitoring
     DATABASE_URL: str = (
-        "postgresql+psycopg2://postgres:postgres@localhost:5432/sih_monitoring"
+        "postgresql+psycopg://postgres:postgres@localhost:5432/sih_monitoring"
     )
 
     # --- Auth / JWT ---
