@@ -13,7 +13,12 @@ from app.schemas.inspection import (
     InspectionOut,
     InspectionReportSubmit,
     InspectionAssign,
+<<<<<<< Updated upstream
     InspectionUpdate,
+=======
+    EvidenceCreate,
+    EvidenceOut,
+>>>>>>> Stashed changes
 )
 from app.services.assignment import run_random_assignment
 
@@ -102,6 +107,17 @@ def list_inspections(
         query = query.filter(Inspection.inspector_id == current_user.id)
 
     return query.order_by(Inspection.created_at.desc()).all()
+
+@router.get("/{inspection_id}", response_model=InspectionOut)
+def get_inspection(
+       inspection_id: uuid.UUID,
+       db: Session = Depends(get_db),
+       _user: User = Depends(get_current_user),
+   ):
+       inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
+       if not inspection:
+           raise HTTPException(status_code=404, detail="Inspection not found")
+       return inspection
 
 
 @router.patch("/{inspection_id}", response_model=InspectionOut)
@@ -214,3 +230,38 @@ def submit_report(
     db.commit()
     db.refresh(inspection)
     return inspection
+
+@router.post("/{inspection_id}/evidence", response_model=EvidenceOut, status_code=201)
+def add_evidence(
+       inspection_id: uuid.UUID,
+       payload: EvidenceCreate,
+       db: Session = Depends(get_db),
+       _user: User = Depends(get_current_user),
+   ):
+       inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
+       if not inspection:
+           raise HTTPException(status_code=404, detail="Inspection not found")
+
+       evidence = InspectionEvidence(
+           inspection_id=inspection_id,
+           file_url=payload.file_url,
+           file_type=payload.file_type,
+       )
+       db.add(evidence)
+       db.commit()
+       db.refresh(evidence)
+       return evidence
+
+
+@router.get("/{inspection_id}/evidence", response_model=list[EvidenceOut])
+def list_evidence(
+       inspection_id: uuid.UUID,
+       db: Session = Depends(get_db),
+       _user: User = Depends(get_current_user),
+   ):
+       return (
+           db.query(InspectionEvidence)
+           .filter(InspectionEvidence.inspection_id == inspection_id)
+           .order_by(InspectionEvidence.captured_at.desc())
+           .all()
+       )

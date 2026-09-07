@@ -10,3 +10,5 @@ class DashboardStats(BaseModel):
        missed_inspections: int
        active_users: int
        inspections_with_live_feed: int
+       projects_with_live_feed: int
+       unresolved_alerts: int
