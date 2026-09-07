@@ -76,9 +76,21 @@
             <option value="">Select a project…</option>
           </select>
         </div>
+        <div class="field">
+          <label for="manual-type">Type</label>
+          <select id="manual-type">
+            <option value="surprise">Surprise visit</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="vc_random">Random VC check-in</option>
+          </select>
+        </div>
+        <div class="field" style="grid-column: 1 / -1;">
+          <label for="manual-cctv">CCTV feed URL for this assignment (HLS .m3u8, or a YouTube live link for testing)</label>
+          <input type="text" id="manual-cctv" placeholder="https://example.com/stream.m3u8" />
+        </div>
       </div>
       <p style="margin:0 0 14px; font-size:0.82rem; color:var(--muted);">
-        Adds one unassigned inspection (random type) for this project, even if it already has a recent inspection. Assign an inspector and date/time for it afterward.
+        Adds one unassigned inspection of the chosen type for this project, even if it already has a recent inspection. Assign an inspector and date/time for it afterward.
       </p>
       <div class="form-error" id="manual-add-error"></div>
       <div class="actions">
@@ -110,6 +122,26 @@
       </div>
     </form>
 
+    <form class="quick-add-form" id="feed-form">
+      <p style="margin:0 0 14px; font-size:0.9rem; color:var(--muted);">
+        Set the live CCTV feed for this assignment: <strong id="feed-project-name"></strong>
+      </p>
+      <div class="grid">
+        <div class="field" style="grid-column: 1 / -1;">
+          <label for="feed-url">CCTV feed URL (HLS .m3u8, or a YouTube live link for testing)</label>
+          <input type="text" id="feed-url" placeholder="https://example.com/stream.m3u8" />
+        </div>
+      </div>
+      <p style="margin:0 0 14px; font-size:0.82rem; color:var(--muted);">
+        Leave blank and save to remove the feed from this assignment.
+      </p>
+      <div class="form-error" id="feed-error"></div>
+      <div class="actions">
+        <button type="submit" class="btn-primary" id="feed-submit">Save feed</button>
+        <button type="button" class="quick-add-toggle" id="feed-cancel">Cancel</button>
+      </div>
+    </form>
+
     <div class="card">
       <table id="inspections-table">
         <thead>
@@ -120,6 +152,7 @@
             <th>Status</th>
             <th>Assigned by</th>
             <th>Scheduled</th>
+            <th>CCTV Feed</th>
             <th>Actions</th>
           </tr>
         </thead>

@@ -1,6 +1,18 @@
 // Central place for the backend base URL and auth-aware fetch helper.
-// Change API_BASE if the backend isn't running on localhost:8000.
-const API_BASE = "http://localhost:8000";
+//
+// The backend serves the frontend itself (see main.py's StaticFiles
+// mount) so that the whole app can be exposed through a single tunnel
+// (ngrok/cloudflared) on one origin. Because of that, API_BASE should
+// normally be relative/empty -- fetches then go to whatever origin the
+// page was actually loaded from (localhost:8000, a tunnel URL, a
+// deployed domain, doesn't matter).
+//
+// The one exception is local dev via a separate static file server
+// (e.g. VS Code "Live Server" on port 5500) with the backend running
+// standalone on 8000 -- that's the only case that needs an explicit
+// cross-origin base, and it's also the only origin the backend's CORS
+// config (see ALLOWED_ORIGINS in config.py) allows.
+const API_BASE = window.location.port === "5500" ? "http://localhost:8000" : "";
 
 function getToken() {
   return localStorage.getItem("access_token");

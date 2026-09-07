@@ -22,14 +22,15 @@ class Project(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(250), nullable=False)
-    entity_type = Column(Enum(EntityType), nullable=False, default=EntityType.PROJECT)
+    entity_type = Column(
+        Enum(EntityType, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
+        nullable=False,
+        default=EntityType.PROJECT,
+    )
     scheme_name = Column(String(200), nullable=True)  # e.g. name of DoSJE scheme
     address = Column(Text, nullable=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
-
-    # URL/stream key for the live CCTV feed integration
-    cctv_feed_url = Column(String(500), nullable=True)
 
     incharge_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     incharge = relationship("User", back_populates="projects")

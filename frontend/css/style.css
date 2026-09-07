@@ -314,6 +314,22 @@ h1, h2, h3 { font-family: var(--font-display); }
   box-shadow: 0 0 0 3.5px rgba(22, 41, 75, 0.13);
 }
 
+/* The native date/time picker icon is drawn in a fixed dark color by
+   default, so on the dark theme's dark input it's nearly invisible.
+   Force it to follow the theme's text color instead. */
+.field input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.75;
+}
+.field input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+html[data-theme="dark"] .field input::-webkit-calendar-picker-indicator {
+  /* Recolors the browser's black calendar glyph to a light color that
+     reads clearly against the dark input background. */
+  filter: invert(1) brightness(1.6);
+}
+
 .btn-primary {
   width: 100%;
   padding: 12px;

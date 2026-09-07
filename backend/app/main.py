@@ -10,6 +10,8 @@ from app.config import settings
 from app.database import Base, engine, SessionLocal
 from app import models  # noqa: F401  (ensures all models are registered on Base)
 from app.api.routes import auth, users, projects, inspections, dashboard
+from app.core.legacy_enum_migration import normalize_legacy_enum_types
+from app.core.schema_sync import add_missing_columns
 from app.services.assignment import run_random_assignment
 
 scheduler = BackgroundScheduler()
@@ -30,6 +32,14 @@ async def lifespan(app: FastAPI):
     # For the hackathon build we create tables directly from the models.
     # Swap this for Alembic migrations once the schema stabilizes.
     Base.metadata.create_all(bind=engine)
+
+    # Self-heal schema drift left over from before Alembic: add any
+    # columns the models have gained since a table was first created
+    # (see module docstring), then fix up any enum columns still
+    # storing the old uppercase names. Both are no-ops on a fresh or
+    # already up-to-date database.
+    add_missing_columns(engine)
+    normalize_legacy_enum_types(engine)
 
     if not scheduler.running:
         scheduler.add_job(

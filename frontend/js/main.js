@@ -26,12 +26,9 @@ async function loadUser() {
       ? "inline-block"
       : "none";
 
-    // Live camera monitoring is admin-only (enforced server-side too --
-    // this just avoids showing a dead-end link to everyone else).
-    const liveMonitoringLink = document.querySelector('a[href="live-monitoring.html"]');
-    if (liveMonitoringLink && me.role !== "admin") {
-      liveMonitoringLink.style.display = "none";
-    }
+    // Live Monitoring is now open to every role -- feeds live on
+    // individual inspections and /api/inspections already scopes what
+    // each role can see, so there's nothing left to gate here.
   } catch (err) {
     // Token invalid/expired -> back to login
     clearToken();
@@ -76,7 +73,6 @@ async function loadProjects() {
         <td>${typeBadge(p.entity_type)}</td>
         <td>${p.scheme_name || "—"}</td>
         <td>${p.address || "—"}</td>
-        <td>${p.cctv_feed_url ? "Connected" : "Not configured"}</td>
         <td>${actionsCell(p)}</td>
       </tr>`
       )
@@ -113,7 +109,6 @@ function openFormForEdit(project) {
   document.getElementById("p-type").value = project.entity_type || "project";
   document.getElementById("p-scheme").value = project.scheme_name || "";
   document.getElementById("p-address").value = project.address || "";
-  document.getElementById("p-cctv").value = project.cctv_feed_url || "";
   submitBtn.textContent = "Save changes";
   addForm.classList.add("open");
   addForm.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -144,7 +139,6 @@ addForm.addEventListener("submit", async (e) => {
     entity_type: document.getElementById("p-type").value,
     scheme_name: document.getElementById("p-scheme").value.trim() || null,
     address: document.getElementById("p-address").value.trim() || null,
-    cctv_feed_url: document.getElementById("p-cctv").value.trim() || null,
   };
 
   try {

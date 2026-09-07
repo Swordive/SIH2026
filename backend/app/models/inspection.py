@@ -37,8 +37,16 @@ class Inspection(Base):
         "User", back_populates="inspections", foreign_keys=[inspector_id]
     )
 
-    inspection_type = Column(Enum(InspectionType), nullable=False, default=InspectionType.SURPRISE)
-    status = Column(Enum(InspectionStatus), nullable=False, default=InspectionStatus.PENDING)
+    inspection_type = Column(
+        Enum(InspectionType, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
+        nullable=False,
+        default=InspectionType.SURPRISE,
+    )
+    status = Column(
+        Enum(InspectionStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
+        nullable=False,
+        default=InspectionStatus.PENDING,
+    )
 
     # True if this inspection's inspector/date was picked by the
     # random-assignment engine rather than a human.
@@ -46,6 +54,12 @@ class Inspection(Base):
 
     scheduled_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
+
+    # URL/stream key for THIS assignment's live CCTV feed -- different
+    # inspections (even for the same project) can point at different
+    # cameras/streams. Set by an admin/department official, typically
+    # once an inspector and date have been assigned.
+    cctv_feed_url = Column(String(500), nullable=True)
 
     # Geo-tag captured at the moment the report was filed
     report_latitude = Column(Float, nullable=True)

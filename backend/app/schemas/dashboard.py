@@ -9,4 +9,4 @@ class DashboardStats(BaseModel):
        completed_inspections: int
        missed_inspections: int
        active_users: int
-       projects_with_live_feed: int
+       inspections_with_live_feed: int

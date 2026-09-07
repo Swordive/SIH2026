@@ -4,7 +4,7 @@ const submitBtn = document.getElementById("submit-btn");
 
 // If already signed in, skip straight to the dashboard.
 if (getToken()) {
-  window.location.href = "index.html";
+  window.location.href = "dashboard.html";
 }
 
 form.addEventListener("submit", async (e) => {
@@ -18,7 +18,7 @@ form.addEventListener("submit", async (e) => {
 
   try {
     await login(email, password);
-    window.location.href = "index.html";
+    window.location.href = "dashboard.html";
   } catch (err) {
     errorBox.textContent = err.message;
     errorBox.style.display = "block";

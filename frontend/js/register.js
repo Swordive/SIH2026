@@ -19,7 +19,7 @@ form.addEventListener("submit", async (e) => {
   try {
     await apiFetch("/api/auth/register", { method: "POST", body: payload, auth: false });
     await login(payload.email, payload.password);
-    window.location.href = "index.html";
+    window.location.href = "dashboard.html";
   } catch (err) {
     errorBox.textContent = err.message;
     errorBox.style.display = "block";

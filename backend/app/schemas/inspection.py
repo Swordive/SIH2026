@@ -8,6 +8,13 @@ class InspectionCreate(BaseModel):
     project_id: uuid.UUID
     inspection_type: InspectionType = InspectionType.SURPRISE
     scheduled_at: datetime | None = None
+    cctv_feed_url: str | None = None
+
+
+class InspectionUpdate(BaseModel):
+    """Used to attach/change/remove this inspection's own CCTV feed
+    (independent of assigning an inspector/date -- see InspectionAssign)."""
+    cctv_feed_url: str | None = None
 
 
 class InspectionReportSubmit(BaseModel):
@@ -35,6 +42,7 @@ class InspectionOut(BaseModel):
     ai_assigned: bool
     scheduled_at: datetime | None
     completed_at: datetime | None
+    cctv_feed_url: str | None
     report_latitude: float | None
     report_longitude: float | None
     report_text: str | None

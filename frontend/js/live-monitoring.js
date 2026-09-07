@@ -14,11 +14,6 @@ async function loadUser() {
     const me = await apiFetch("/api/auth/me");
     document.getElementById("user-name").textContent = me.full_name;
     document.getElementById("user-role").textContent = ROLE_LABELS[me.role] || me.role;
-
-    const liveMonitoringLink = document.querySelector('a[href="live-monitoring.html"]');
-    if (liveMonitoringLink && me.role !== "admin") {
-      liveMonitoringLink.style.display = "none";
-    }
   } catch (err) {
     clearToken();
     window.location.href = "login.html";
@@ -92,20 +87,39 @@ function attachFeed(container, url) {
   }
 }
 
+const TYPE_LABELS = {
+  surprise: "Surprise visit",
+  scheduled: "Scheduled inspection",
+  vc_random: "Random VC check-in",
+};
+
+const STATUS_LABELS = {
+  pending: "Pending",
+  in_progress: "In progress",
+};
+
+// Inspections in these statuses are the ones worth watching live --
+// not yet completed and not missed. ("in_progress" isn't set anywhere
+// in the backend yet, but it's included here so this keeps working
+// once that transition gets added.)
+const ACTIVE_INSPECTION_STATUSES = ["pending", "in_progress"];
+
 /**
  * Builds the static card markup only -- does NOT attach any video
  * source yet. Returns both the card (to insert into the grid) and
  * the inner videoWrap element (to attach playback to afterward, once
- * the card is actually in the document).
+ * the card is actually in the document). One card per INSPECTION
+ * (assignment), not per project -- two active inspections against
+ * the same project, each with their own camera, get two cards.
  */
-function buildFeedCard(project) {
+function buildFeedCard(project, inspection) {
   const card = document.createElement("div");
   card.className = "feed-card";
 
   const videoWrap = document.createElement("div");
   videoWrap.className = "feed-video-wrap";
 
-  if (project.cctv_feed_url) {
+  if (inspection.cctv_feed_url) {
     const badge = document.createElement("div");
     badge.className = "live-badge";
     badge.innerHTML = `<span class="dot"></span> LIVE`;
@@ -113,15 +127,18 @@ function buildFeedCard(project) {
   } else {
     const placeholder = document.createElement("div");
     placeholder.className = "feed-placeholder";
-    placeholder.textContent = "No CCTV feed configured for this project";
+    placeholder.textContent = "No CCTV feed configured for this assignment";
     videoWrap.appendChild(placeholder);
   }
 
   const info = document.createElement("div");
   info.className = "feed-info";
   info.innerHTML = `
-    <h3>${project.name}</h3>
-    <p>${project.address || "No address on file"}</p>
+    <h3>${project ? project.name : "Unknown project"}</h3>
+    <p>${(project && project.address) || "No address on file"}</p>
+    <p>${TYPE_LABELS[inspection.inspection_type] || inspection.inspection_type} · ${
+    STATUS_LABELS[inspection.status] || inspection.status
+  }${inspection.scheduled_at ? " · " + new Date(inspection.scheduled_at).toLocaleString() : " · not yet scheduled"}</p>
   `;
 
   card.appendChild(videoWrap);
@@ -135,47 +152,55 @@ async function loadFeeds() {
   const countEl = document.getElementById("feed-count");
 
   try {
-    // Admin-only endpoint -- returns 403 for every other role. Live
-    // camera feeds are restricted to admins, unlike general project
-    // info (GET /api/projects), which more roles can see.
-    const projects = await apiFetch("/api/projects/cctv-feeds");
-    const withFeeds = projects.filter((p) => p.cctv_feed_url);
+    // /api/inspections is scoped server-side per role already (a PMU
+    // inspector only ever gets their own assigned inspections back;
+    // everyone else gets the full list), so this page just follows
+    // that -- no separate admin-only endpoint needed now that the
+    // feed lives on the inspection rather than the project.
+    const [projects, inspections] = await Promise.all([
+      apiFetch("/api/projects"),
+      apiFetch("/api/inspections"),
+    ]);
 
-    countEl.textContent = `${withFeeds.length} of ${projects.length} projects have a live feed`;
+    const projectMap = Object.fromEntries(projects.map((p) => [p.id, p]));
 
-    if (projects.length === 0) {
+    // One card per active inspection -- different assignments (even
+    // against the same project) show up as separate feeds.
+    const activeInspections = inspections.filter((i) =>
+      ACTIVE_INSPECTION_STATUSES.includes(i.status)
+    );
+
+    const withFeeds = activeInspections.filter((i) => i.cctv_feed_url);
+    countEl.textContent = `${withFeeds.length} of ${activeInspections.length} active assignments have a live feed`;
+
+    if (activeInspections.length === 0) {
       emptyState.style.display = "block";
       return;
     }
+    emptyState.style.display = "none";
 
-    // Show projects with feeds first, then the ones without (as
+    // Show assignments with feeds first, then the ones without (as
     // placeholders) so officials can see coverage gaps at a glance.
-    const ordered = [...withFeeds, ...projects.filter((p) => !p.cctv_feed_url)];
+    const ordered = [...withFeeds, ...activeInspections.filter((i) => !i.cctv_feed_url)];
 
     // Step 1: build and insert all cards into the DOM first.
-    const built = ordered.map((project) => {
-      const { card, videoWrap } = buildFeedCard(project);
+    const built = ordered.map((inspection) => {
+      const { card, videoWrap } = buildFeedCard(projectMap[inspection.project_id], inspection);
       grid.appendChild(card);
-      return { project, videoWrap };
+      return { inspection, videoWrap };
     });
 
     // Step 2: now that everything is actually on the page, attach
     // playback. This ordering is what fixes autoplay reliably
     // starting.
-    built.forEach(({ project, videoWrap }) => {
-      if (project.cctv_feed_url) {
-        attachFeed(videoWrap, project.cctv_feed_url);
+    built.forEach(({ inspection, videoWrap }) => {
+      if (inspection.cctv_feed_url) {
+        attachFeed(videoWrap, inspection.cctv_feed_url);
       }
     });
   } catch (err) {
-    // A 403 here means the signed-in user isn't an admin -- live
-    // monitoring is admin-only. Show a clear message instead of a
-    // blank/broken page.
     emptyState.style.display = "block";
-    emptyState.innerHTML = `
-      <h3>Access restricted</h3>
-      <p>${err.message.includes("permission") ? "Live camera monitoring is available to administrators only." : err.message}</p>
-    `;
+    emptyState.innerHTML = `<h3>Couldn't load feeds</h3><p>${err.message}</p>`;
     countEl.textContent = "";
   }
 }

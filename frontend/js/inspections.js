@@ -29,6 +29,7 @@ let userMap = {};
 let inspectorOptions = []; // [{id, full_name}]
 let canManage = false;
 let assigningInspectionId = null;
+let feedInspectionId = null;
 let currentUserId = null;
 let currentUserName = null;
 
@@ -47,12 +48,9 @@ async function loadUser() {
       ? "inline-block"
       : "none";
 
-    // Live camera monitoring is admin-only (enforced server-side too --
-    // this just avoids showing a dead-end link to everyone else).
-    const liveMonitoringLink = document.querySelector('a[href="live-monitoring.html"]');
-    if (liveMonitoringLink && me.role !== "admin") {
-      liveMonitoringLink.style.display = "none";
-    }
+    // Live Monitoring is now open to every role -- feeds live on
+    // individual inspections and /api/inspections already scopes what
+    // each role can see, so there's nothing left to gate here.
   } catch (err) {
     clearToken();
     window.location.href = "login.html";
@@ -90,8 +88,10 @@ function inspectorDisplayName(inspectorId) {
 function actionsCell(inspection) {
   if (!canManage) return "—";
   const assignLabel = inspection.inspector_id ? "Reassign" : "Assign";
+  const feedLabel = inspection.cctv_feed_url ? "Edit feed" : "Set feed";
   return `
     <button class="row-action" data-action="assign" data-id="${inspection.id}">${assignLabel}</button>
+    <button class="row-action" data-action="feed" data-id="${inspection.id}">${feedLabel}</button>
     <button class="row-action danger" data-action="delete" data-id="${inspection.id}">Delete</button>
   `;
 }
@@ -122,6 +122,7 @@ async function loadInspections() {
         <td>${STATUS_LABELS[i.status] || i.status}</td>
         <td>${i.ai_assigned ? "AI / automation" : "Manual"}</td>
         <td>${formatDate(i.scheduled_at)}</td>
+        <td>${i.cctv_feed_url ? "Connected" : "Not configured"}</td>
         <td>${actionsCell(i)}</td>
       </tr>`)
       .join("");
@@ -162,6 +163,8 @@ document.getElementById("run-assignment-btn").addEventListener("click", async ()
 
 const manualForm = document.getElementById("manual-add-form");
 const manualProjectSelect = document.getElementById("manual-project");
+const manualTypeSelect = document.getElementById("manual-type");
+const manualCctvInput = document.getElementById("manual-cctv");
 const manualSubmitBtn = document.getElementById("manual-add-submit");
 const manualErrorBox = document.getElementById("manual-add-error");
 
@@ -185,13 +188,20 @@ manualForm.addEventListener("submit", async (e) => {
   const projectId = manualProjectSelect.value;
   if (!projectId) return;
 
+  const inspectionType = manualTypeSelect.value;
+  const cctvFeedUrl = manualCctvInput.value.trim();
+
   manualSubmitBtn.disabled = true;
   manualSubmitBtn.textContent = "Adding…";
 
   try {
-    await apiFetch(`/api/inspections/manual?project_id=${encodeURIComponent(projectId)}`, {
-      method: "POST",
+    const params = new URLSearchParams({
+      project_id: projectId,
+      inspection_type: inspectionType,
     });
+    if (cctvFeedUrl) params.set("cctv_feed_url", cctvFeedUrl);
+
+    await apiFetch(`/api/inspections/manual?${params.toString()}`, { method: "POST" });
     manualForm.classList.remove("open");
     manualForm.reset();
     await loadInspections();
@@ -241,6 +251,53 @@ function closeAssignForm() {
 
 document.getElementById("assign-cancel").addEventListener("click", closeAssignForm);
 
+// ---- Feed form ----
+
+const feedForm = document.getElementById("feed-form");
+const feedUrlInput = document.getElementById("feed-url");
+const feedSubmitBtn = document.getElementById("feed-submit");
+const feedErrorBox = document.getElementById("feed-error");
+
+function openFeedForm(inspection) {
+  feedInspectionId = inspection.id;
+  document.getElementById("feed-project-name").textContent =
+    projectMap[inspection.project_id] || inspection.project_id;
+  feedUrlInput.value = inspection.cctv_feed_url || "";
+  feedErrorBox.style.display = "none";
+  feedForm.classList.add("open");
+  feedForm.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function closeFeedForm() {
+  feedInspectionId = null;
+  feedForm.classList.remove("open");
+  feedForm.reset();
+}
+
+document.getElementById("feed-cancel").addEventListener("click", closeFeedForm);
+
+feedForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  feedErrorBox.style.display = "none";
+  feedSubmitBtn.disabled = true;
+  feedSubmitBtn.textContent = "Saving…";
+
+  try {
+    await apiFetch(`/api/inspections/${feedInspectionId}`, {
+      method: "PATCH",
+      body: { cctv_feed_url: feedUrlInput.value.trim() || null },
+    });
+    closeFeedForm();
+    await loadInspections();
+  } catch (err) {
+    feedErrorBox.textContent = err.message;
+    feedErrorBox.style.display = "block";
+  } finally {
+    feedSubmitBtn.disabled = false;
+    feedSubmitBtn.textContent = "Save feed";
+  }
+});
+
 document.getElementById("inspections-body").addEventListener("click", async (e) => {
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
@@ -250,6 +307,11 @@ document.getElementById("inspections-body").addEventListener("click", async (e) 
 
   if (btn.dataset.action === "assign") {
     openAssignForm(inspection);
+    return;
+  }
+
+  if (btn.dataset.action === "feed") {
+    openFeedForm(inspection);
     return;
   }
 
@@ -264,6 +326,7 @@ document.getElementById("inspections-body").addEventListener("click", async (e) 
     try {
       await apiFetch(`/api/inspections/${inspection.id}`, { method: "DELETE" });
       if (assigningInspectionId === inspection.id) closeAssignForm();
+      if (feedInspectionId === inspection.id) closeFeedForm();
       await loadInspections();
     } catch (err) {
       alert(err.message);

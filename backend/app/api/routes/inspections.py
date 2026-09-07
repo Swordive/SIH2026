@@ -7,14 +7,15 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_user, require_roles
 from app.models.user import User, UserRole
 from app.models.project import Project
-from app.models.inspection import Inspection, InspectionStatus, InspectionEvidence
+from app.models.inspection import Inspection, InspectionStatus, InspectionType, InspectionEvidence
 from app.schemas.inspection import (
     InspectionCreate,
     InspectionOut,
     InspectionReportSubmit,
     InspectionAssign,
+    InspectionUpdate,
 )
-from app.services.assignment import run_random_assignment, build_unassigned_inspection
+from app.services.assignment import run_random_assignment
 
 router = APIRouter(prefix="/api/inspections", tags=["inspections"])
 
@@ -40,20 +41,32 @@ def auto_assign_inspections(
 @router.post("/manual", response_model=InspectionOut, status_code=201)
 def add_manual_inspection(
     project_id: uuid.UUID,
+    inspection_type: InspectionType = InspectionType.SURPRISE,
+    cctv_feed_url: str | None = None,
     db: Session = Depends(get_db),
     _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
 ):
     """
-    Adds a single unassigned inspection (random type) for a specific
-    project, on demand. Unlike /auto-assign, this bypasses the
-    "already covered recently" filter -- use this when you want to
-    add another inspection for a project that already has one.
+    Adds a single unassigned inspection for a specific project, with
+    a type chosen by the admin/department official. Unlike
+    /auto-assign, this bypasses the "already covered recently" filter
+    -- use this when you want to add another inspection for a project
+    that already has one. Marked ai_assigned=False since a human
+    picked both the project and the type here.
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    inspection = build_unassigned_inspection(project)
+    inspection = Inspection(
+        project_id=project.id,
+        inspector_id=None,
+        inspection_type=inspection_type,
+        status=InspectionStatus.PENDING,
+        ai_assigned=False,
+        scheduled_at=None,
+        cctv_feed_url=cctv_feed_url,
+    )
     db.add(inspection)
     db.commit()
     db.refresh(inspection)
@@ -89,6 +102,32 @@ def list_inspections(
         query = query.filter(Inspection.inspector_id == current_user.id)
 
     return query.order_by(Inspection.created_at.desc()).all()
+
+
+@router.patch("/{inspection_id}", response_model=InspectionOut)
+def update_inspection(
+    inspection_id: uuid.UUID,
+    payload: InspectionUpdate,
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
+):
+    """
+    Attaches, changes, or clears this specific inspection's CCTV feed.
+    Kept separate from PATCH /{id}/assign since setting up a camera is
+    a distinct step from picking an inspector and date -- either can
+    happen first, and this can be called again later to swap feeds.
+    """
+    inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(inspection, field, value)
+
+    db.commit()
+    db.refresh(inspection)
+    return inspection
 
 
 @router.patch("/{inspection_id}/assign", response_model=InspectionOut)
