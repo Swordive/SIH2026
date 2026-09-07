@@ -18,7 +18,6 @@ def get_dashboard(
 ):
     inspection_query = db.query(Inspection)
 
-<<<<<<< Updated upstream
     # PMU inspectors only get to see their own numbers, not org-wide ones.
     if user.role == UserRole.PMU_INSPECTOR:
         inspection_query = inspection_query.filter(Inspection.inspector_id == user.id)
@@ -60,8 +59,8 @@ def get_dashboard(
         active_users=active_users,
         inspections_with_live_feed=inspections_with_live_feed,
     )
-=======
-     return DashboardStats(
+
+    return DashboardStats(
            total_projects=db.query(Project).count(),
            total_inspections=db.query(Inspection).count(),
            pending_inspections=status_counts.get(InspectionStatus.PENDING, 0),
@@ -74,4 +73,4 @@ def get_dashboard(
            .count(),
            unresolved_alerts=db.query(Alert).filter(Alert.resolved == False).count(),
        )
->>>>>>> Stashed changes
+

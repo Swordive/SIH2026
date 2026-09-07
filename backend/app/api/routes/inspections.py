@@ -13,12 +13,9 @@ from app.schemas.inspection import (
     InspectionOut,
     InspectionReportSubmit,
     InspectionAssign,
-<<<<<<< Updated upstream
     InspectionUpdate,
-=======
     EvidenceCreate,
     EvidenceOut,
->>>>>>> Stashed changes
 )
 from app.services.assignment import run_random_assignment
 
