@@ -47,3 +47,17 @@ class InspectionOut(BaseModel):
     report_longitude: float | None
     report_text: str | None
     created_at: datetime
+
+class EvidenceCreate(BaseModel):
+    file_url: str
+    file_type: str | None = None
+
+
+class EvidenceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    inspection_id: uuid.UUID
+    file_url: str
+    file_type: str | None
+    captured_at: datetime
