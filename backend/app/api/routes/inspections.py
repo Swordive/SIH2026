@@ -14,11 +14,11 @@ from app.schemas.inspection import (
     InspectionReportSubmit,
     InspectionAssign,
     InspectionUpdate,
+    AttendanceMark,
     EvidenceCreate,
     EvidenceOut,
 )
 from app.services.assignment import run_random_assignment
-
 router = APIRouter(prefix="/api/inspections", tags=["inspections"])
 
 
@@ -218,7 +218,7 @@ def submit_report(
             status_code=403, detail="This inspection is not assigned to you"
         )
 
-    inspection.report_text = payload.report_text
+        inspection.report_text = payload.report_text
     inspection.report_latitude = payload.report_latitude
     inspection.report_longitude = payload.report_longitude
     inspection.status = InspectionStatus.COMPLETED
@@ -227,6 +227,39 @@ def submit_report(
     db.commit()
     db.refresh(inspection)
     return inspection
+
+
+@router.post("/{inspection_id}/attendance", response_model=InspectionOut)
+def mark_attendance(
+    inspection_id: uuid.UUID,
+    payload: AttendanceMark,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_roles(UserRole.PMU_INSPECTOR, UserRole.ADMIN)
+    ),
+):
+    """Marks the assigned inspector as physically present for this
+    inspection, with a timestamp and optional GPS coordinates."""
+    inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+
+    if (
+        current_user.role == UserRole.PMU_INSPECTOR
+        and inspection.inspector_id != current_user.id
+    ):
+        raise HTTPException(
+            status_code=403, detail="This inspection is not assigned to you"
+        )
+
+    inspection.attendance_marked_at = datetime.utcnow()
+    inspection.attendance_latitude = payload.latitude
+    inspection.attendance_longitude = payload.longitude
+
+    db.commit()
+    db.refresh(inspection)
+    return inspection
+
 
 @router.post("/{inspection_id}/evidence", response_model=EvidenceOut, status_code=201)
 def add_evidence(

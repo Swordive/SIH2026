@@ -31,6 +31,14 @@ class InspectionAssign(BaseModel):
     scheduled_at: datetime
 
 
+class AttendanceMark(BaseModel):
+    """Used by the assigned inspector to check in as physically
+    present. GPS is optional -- e.g. a VC_RANDOM video-call
+    inspection may have nothing meaningful to geo-tag."""
+    latitude: float | None = None
+    longitude: float | None = None
+
+
 class InspectionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -46,6 +54,9 @@ class InspectionOut(BaseModel):
     report_latitude: float | None
     report_longitude: float | None
     report_text: str | None
+    attendance_marked_at: datetime | None
+    attendance_latitude: float | None
+    attendance_longitude: float | None
     created_at: datetime
 
 class EvidenceCreate(BaseModel):

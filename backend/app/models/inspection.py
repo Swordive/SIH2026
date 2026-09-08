@@ -61,10 +61,18 @@ class Inspection(Base):
     # once an inspector and date have been assigned.
     cctv_feed_url = Column(String(500), nullable=True)
 
-    # Geo-tag captured at the moment the report was filed
+       # Geo-tag captured at the moment the report was filed
     report_latitude = Column(Float, nullable=True)
     report_longitude = Column(Float, nullable=True)
     report_text = Column(Text, nullable=True)
+
+    # Set when the assigned inspector checks in as physically present
+    # for this inspection. GPS is optional -- some check-ins (e.g. a
+    # VC_RANDOM video-call inspection) may not have a meaningful
+    # location to capture.
+    attendance_marked_at = Column(DateTime, nullable=True)
+    attendance_latitude = Column(Float, nullable=True)
+    attendance_longitude = Column(Float, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
