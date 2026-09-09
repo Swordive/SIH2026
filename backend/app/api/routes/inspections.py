@@ -14,9 +14,11 @@ from app.schemas.inspection import (
     InspectionReportSubmit,
     InspectionAssign,
     InspectionUpdate,
+    AttendanceMark,
+    EvidenceCreate,
+    EvidenceOut,
 )
 from app.services.assignment import run_random_assignment
-
 router = APIRouter(prefix="/api/inspections", tags=["inspections"])
 
 
@@ -102,6 +104,17 @@ def list_inspections(
         query = query.filter(Inspection.inspector_id == current_user.id)
 
     return query.order_by(Inspection.created_at.desc()).all()
+
+@router.get("/{inspection_id}", response_model=InspectionOut)
+def get_inspection(
+       inspection_id: uuid.UUID,
+       db: Session = Depends(get_db),
+       _user: User = Depends(get_current_user),
+   ):
+       inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
+       if not inspection:
+           raise HTTPException(status_code=404, detail="Inspection not found")
+       return inspection
 
 
 @router.patch("/{inspection_id}", response_model=InspectionOut)
@@ -205,7 +218,7 @@ def submit_report(
             status_code=403, detail="This inspection is not assigned to you"
         )
 
-    inspection.report_text = payload.report_text
+        inspection.report_text = payload.report_text
     inspection.report_latitude = payload.report_latitude
     inspection.report_longitude = payload.report_longitude
     inspection.status = InspectionStatus.COMPLETED
@@ -214,3 +227,71 @@ def submit_report(
     db.commit()
     db.refresh(inspection)
     return inspection
+
+
+@router.post("/{inspection_id}/attendance", response_model=InspectionOut)
+def mark_attendance(
+    inspection_id: uuid.UUID,
+    payload: AttendanceMark,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_roles(UserRole.PMU_INSPECTOR, UserRole.ADMIN)
+    ),
+):
+    """Marks the assigned inspector as physically present for this
+    inspection, with a timestamp and optional GPS coordinates."""
+    inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+
+    if (
+        current_user.role == UserRole.PMU_INSPECTOR
+        and inspection.inspector_id != current_user.id
+    ):
+        raise HTTPException(
+            status_code=403, detail="This inspection is not assigned to you"
+        )
+
+    inspection.attendance_marked_at = datetime.utcnow()
+    inspection.attendance_latitude = payload.latitude
+    inspection.attendance_longitude = payload.longitude
+
+    db.commit()
+    db.refresh(inspection)
+    return inspection
+
+
+@router.post("/{inspection_id}/evidence", response_model=EvidenceOut, status_code=201)
+def add_evidence(
+       inspection_id: uuid.UUID,
+       payload: EvidenceCreate,
+       db: Session = Depends(get_db),
+       _user: User = Depends(get_current_user),
+   ):
+       inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
+       if not inspection:
+           raise HTTPException(status_code=404, detail="Inspection not found")
+
+       evidence = InspectionEvidence(
+           inspection_id=inspection_id,
+           file_url=payload.file_url,
+           file_type=payload.file_type,
+       )
+       db.add(evidence)
+       db.commit()
+       db.refresh(evidence)
+       return evidence
+
+
+@router.get("/{inspection_id}/evidence", response_model=list[EvidenceOut])
+def list_evidence(
+       inspection_id: uuid.UUID,
+       db: Session = Depends(get_db),
+       _user: User = Depends(get_current_user),
+   ):
+       return (
+           db.query(InspectionEvidence)
+           .filter(InspectionEvidence.inspection_id == inspection_id)
+           .order_by(InspectionEvidence.captured_at.desc())
+           .all()
+       )
