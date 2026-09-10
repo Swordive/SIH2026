@@ -36,7 +36,7 @@
       <a href="index.html">Projects</a>
       <a href="inspections.html">Inspections</a>
       <a href="live-monitoring.html">Live Monitoring</a>
-      <a href="#" title="Coming next">Users</a>
+      <a href="users.html">Users</a>
     </nav>
 
     <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle dark mode">
@@ -100,6 +100,19 @@
       <div class="stat-card status-missed">
         <div class="value" id="stat-missed">—</div>
         <div class="label">Missed</div>
+      </div>
+    </div>
+
+    <h2 class="stats-section-title" id="alerts-title" style="display:none;">
+      Alerts
+      <button type="button" class="section-toggle active" id="alerts-filter-toggle">Unresolved only</button>
+    </h2>
+
+    <div class="card" id="alerts-card" style="display:none;">
+      <div class="alerts-list" id="alerts-list"></div>
+      <div class="empty-state" id="alerts-empty" style="display:none;">
+        <h3>No alerts</h3>
+        <p>Anomalies flagged by the AI/CCTV system for a project will show up here.</p>
       </div>
     </div>
   </main>

@@ -510,7 +510,7 @@ html[data-theme="dark"] .field input::-webkit-calendar-picker-indicator {
 .sidebar nav a[href="index.html"]::before { -webkit-mask-image: var(--icon-building); mask-image: var(--icon-building); }
 .sidebar nav a[href="inspections.html"]::before { -webkit-mask-image: var(--icon-clipboard); mask-image: var(--icon-clipboard); }
 .sidebar nav a[href="live-monitoring.html"]::before { -webkit-mask-image: var(--icon-camera); mask-image: var(--icon-camera); }
-.sidebar nav a[href="#"]::before { -webkit-mask-image: var(--icon-users); mask-image: var(--icon-users); }
+.sidebar nav a[href="users.html"]::before { -webkit-mask-image: var(--icon-users); mask-image: var(--icon-users); }
 
 .sidebar nav a:hover {
   background: rgba(255, 255, 255, 0.07);
@@ -682,6 +682,22 @@ td:last-child, th:last-child { padding-right: 22px; }
 .badge.project { background: #E7ECF5; color: var(--navy); border-color: rgba(22, 41, 75, 0.14); }
 .badge.institute { background: var(--success-soft); color: var(--success); border-color: rgba(42, 122, 79, 0.16); }
 .badge.ngo { background: var(--gold-soft); color: #8A5A1E; border-color: rgba(138, 90, 30, 0.18); }
+
+/* Role badges (Users page) */
+.badge.admin { background: var(--red-soft); color: var(--danger-fg); border-color: rgba(178, 58, 46, 0.16); }
+.badge.department_official { background: #E7ECF5; color: var(--navy); border-color: rgba(22, 41, 75, 0.14); }
+.badge.pmu_inspector { background: var(--gold-soft); color: #8A5A1E; border-color: rgba(138, 90, 30, 0.18); }
+.badge.project_incharge { background: var(--success-soft); color: var(--success); border-color: rgba(42, 122, 79, 0.16); }
+
+/* Active/inactive status badges (Users page) */
+.badge.status-active { background: var(--success-soft); color: var(--success); border-color: rgba(42, 122, 79, 0.16); }
+.badge.status-inactive { background: #EEF0F3; color: var(--muted); border-color: var(--border-strong); }
+
+/* Alert severity badges (Dashboard alerts panel) */
+.badge.severity-low { background: #EEF0F3; color: var(--muted); border-color: var(--border-strong); }
+.badge.severity-medium { background: var(--gold-soft); color: #8A5A1E; border-color: rgba(138, 90, 30, 0.18); }
+.badge.severity-high { background: var(--red-soft); color: var(--danger-fg); border-color: rgba(178, 58, 46, 0.16); }
+.badge.severity-critical { background: var(--red-accent); color: #fff; border-color: var(--red-accent); }
 
 .empty-state {
   padding: 70px 20px;
@@ -985,6 +1001,63 @@ td:last-child, th:last-child { padding-right: 22px; }
 }
 
 .stats-section-title:first-child { margin-top: 0; }
+
+/* ---------- Alerts panel (Dashboard) ---------- */
+
+.stats-section-title .section-toggle {
+  flex: none;
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.stats-section-title .section-toggle:hover { border-color: var(--border-strong); background: var(--navy-soft); }
+.stats-section-title .section-toggle.active {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #fff;
+}
+
+.alerts-list { display: flex; flex-direction: column; }
+
+.alert-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s var(--ease);
+}
+
+.alert-row:last-child { border-bottom: none; }
+.alert-row:hover { background: var(--navy-soft); }
+
+.alert-row.resolved { opacity: 0.55; }
+
+.alert-row .alert-main { flex: 1; min-width: 0; }
+
+.alert-row .alert-message {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.alert-row .alert-meta {
+  font-size: 0.82rem;
+  color: var(--muted);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.alert-row .alert-actions { flex: none; display: flex; align-items: center; gap: 6px; }
 
 .row-action {
   background: none;

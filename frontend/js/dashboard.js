@@ -30,6 +30,16 @@ async function loadUser() {
       document.getElementById("label-total-inspections").textContent = "My total inspections";
       document.getElementById("card-active-users").style.display = "none";
     }
+
+    // The Alerts panel mirrors GET/PATCH /api/alerts's own server-side
+    // role check (admin + department_official only) -- everyone else
+    // never sees the section at all rather than hitting a 403.
+    if (me.role === "admin" || me.role === "department_official") {
+      document.getElementById("alerts-title").style.display = "flex";
+      document.getElementById("alerts-card").style.display = "block";
+      await loadProjectsForAlerts();
+      await loadAlerts();
+    }
   } catch (err) {
     clearToken();
     window.location.href = "login.html";
@@ -62,6 +72,100 @@ async function loadStats() {
     errorBox.style.display = "block";
   }
 }
+
+// ---- Alerts panel ----
+
+let projectNameById = {};
+let showUnresolvedOnly = true;
+
+async function loadProjectsForAlerts() {
+  try {
+    const projects = await apiFetch("/api/projects");
+    projectNameById = Object.fromEntries(projects.map((p) => [p.id, p.name]));
+  } catch (err) {
+    projectNameById = {};
+  }
+}
+
+function severityBadge(severity) {
+  const known = ["low", "medium", "high", "critical"];
+  const cls = known.includes(severity) ? `severity-${severity}` : "severity-medium";
+  return `<span class="badge ${cls}">${severity}</span>`;
+}
+
+function renderAlerts(alerts) {
+  const list = document.getElementById("alerts-list");
+  const empty = document.getElementById("alerts-empty");
+
+  if (alerts.length === 0) {
+    list.innerHTML = "";
+    empty.style.display = "block";
+    return;
+  }
+  empty.style.display = "none";
+
+  list.innerHTML = alerts
+    .map(
+      (a) => `
+    <div class="alert-row ${a.resolved ? "resolved" : ""}">
+      <div class="alert-main">
+        <div class="alert-message">${a.message}</div>
+        <div class="alert-meta">
+          ${severityBadge(a.severity)}
+          <span>${projectNameById[a.project_id] || a.project_id}</span>
+          <span>·</span>
+          <span>${new Date(a.created_at).toLocaleString()}</span>
+        </div>
+      </div>
+      <div class="alert-actions">
+        ${
+          a.resolved
+            ? `<span class="badge status-active">Resolved</span>`
+            : `<button class="row-action" data-action="resolve" data-id="${a.id}">Mark resolved</button>`
+        }
+      </div>
+    </div>`
+    )
+    .join("");
+}
+
+async function loadAlerts() {
+  try {
+    const alerts = await apiFetch(
+      `/api/alerts?unresolved_only=${showUnresolvedOnly}`
+    );
+    renderAlerts(alerts);
+  } catch (err) {
+    // Role-gated at the call site above, so this should only fire on
+    // a genuine network/server error -- fail quietly into the empty
+    // state rather than breaking the rest of the dashboard.
+    renderAlerts([]);
+  }
+}
+
+document.getElementById("alerts-filter-toggle").addEventListener("click", (e) => {
+  showUnresolvedOnly = !showUnresolvedOnly;
+  e.target.classList.toggle("active", showUnresolvedOnly);
+  e.target.textContent = showUnresolvedOnly ? "Unresolved only" : "Showing all";
+  loadAlerts();
+});
+
+document.getElementById("alerts-list").addEventListener("click", async (e) => {
+  const btn = e.target.closest('button[data-action="resolve"]');
+  if (!btn) return;
+
+  btn.disabled = true;
+  btn.textContent = "Resolving…";
+  try {
+    await apiFetch(`/api/alerts/${btn.dataset.id}/resolve`, { method: "PATCH" });
+    await loadAlerts();
+    await loadStats(); // unresolved_alerts count on the dashboard stats, if ever surfaced
+  } catch (err) {
+    alert(err.message);
+    btn.disabled = false;
+    btn.textContent = "Mark resolved";
+  }
+});
 
 document.getElementById("logout-btn").addEventListener("click", () => {
   clearToken();
