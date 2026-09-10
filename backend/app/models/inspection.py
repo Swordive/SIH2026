@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    Column, String, DateTime, Enum, ForeignKey, Float, Text, Boolean
+    Column, String, DateTime, Enum, ForeignKey, Float, Text, Boolean, Integer
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -73,6 +73,27 @@ class Inspection(Base):
     attendance_marked_at = Column(DateTime, nullable=True)
     attendance_latitude = Column(Float, nullable=True)
     attendance_longitude = Column(Float, nullable=True)
+    # Distance in meters between the coordinates above and the
+    # project's registered site location (Project.latitude/longitude
+    # -- the CCTV feed's actual location), computed at check-in time.
+    # NULL if the project has no registered coordinates to compare
+    # against.
+    attendance_distance_meters = Column(Float, nullable=True)
+
+    # AI attendance verification (presence detection, not identity
+    # matching -- see app/services/ai_vision.py). Both set together
+    # with the fields above by POST /{id}/checkin.
+    attendance_face_checked_at = Column(DateTime, nullable=True)
+    attendance_face_count = Column(Integer, nullable=True)
+    # True only when exactly one face was found. NULL means no check-in
+    # has happened yet for this inspection.
+    attendance_face_verified = Column(Boolean, nullable=True)
+
+    # Perceptual hash of the check-in selfie (see
+    # app/services/dedupe.py), used to catch the same photo being
+    # reused across multiple check-ins by the same inspector.
+    attendance_photo_hash = Column(String(16), nullable=True)
+    attendance_duplicate_detected = Column(Boolean, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 

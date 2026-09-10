@@ -14,9 +14,12 @@ async function loadUser() {
     const me = await apiFetch("/api/auth/me");
     document.getElementById("user-name").textContent = me.full_name;
     document.getElementById("user-role").textContent = ROLE_LABELS[me.role] || me.role;
+    hideLiveMonitoringNavIfInspector(me.role);
+    return me;
   } catch (err) {
     clearToken();
     window.location.href = "login.html";
+    return null;
   }
 }
 
@@ -210,5 +213,15 @@ document.getElementById("logout-btn").addEventListener("click", () => {
   window.location.href = "login.html";
 });
 
-loadUser();
-loadFeeds();
+(async () => {
+  const me = await loadUser();
+  if (!me) return;
+
+  if (me.role === "pmu_inspector") {
+    document.getElementById("restricted-state").style.display = "block";
+    document.getElementById("feed-count").textContent = "";
+    return;
+  }
+
+  loadFeeds();
+})();

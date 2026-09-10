@@ -19,6 +19,7 @@ async function loadUser() {
     document.getElementById("user-name").textContent = me.full_name;
     document.getElementById("user-role").textContent =
       ROLE_LABELS[me.role] || me.role;
+    hideLiveMonitoringNavIfInspector(me.role);
 
     // Only admins and department officials can create/edit/delete projects.
     canManageProjects = me.role === "admin" || me.role === "department_official";
@@ -38,6 +39,13 @@ async function loadUser() {
 
 function typeBadge(type) {
   return `<span class="badge ${type}">${type}</span>`;
+}
+
+function formatLocation(project) {
+  if (project.latitude != null && project.longitude != null) {
+    return `${project.latitude.toFixed(5)}, ${project.longitude.toFixed(5)}`;
+  }
+  return "—";
 }
 
 function actionsCell(project) {
@@ -73,6 +81,7 @@ async function loadProjects() {
         <td>${typeBadge(p.entity_type)}</td>
         <td>${p.scheme_name || "—"}</td>
         <td>${p.address || "—"}</td>
+        <td>${formatLocation(p)}</td>
         <td>${actionsCell(p)}</td>
       </tr>`
       )
@@ -109,10 +118,26 @@ function openFormForEdit(project) {
   document.getElementById("p-type").value = project.entity_type || "project";
   document.getElementById("p-scheme").value = project.scheme_name || "";
   document.getElementById("p-address").value = project.address || "";
+  document.getElementById("p-lat").value = project.latitude ?? "";
+  document.getElementById("p-lng").value = project.longitude ?? "";
   submitBtn.textContent = "Save changes";
   addForm.classList.add("open");
   addForm.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
+
+document.getElementById("p-capture-gps").addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    alert("Geolocation is not supported by this browser.");
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      document.getElementById("p-lat").value = pos.coords.latitude;
+      document.getElementById("p-lng").value = pos.coords.longitude;
+    },
+    (err) => alert(`Could not get location: ${err.message}`)
+  );
+});
 
 toggleBtn.addEventListener("click", () => {
   if (addForm.classList.contains("open")) {
@@ -134,11 +159,23 @@ addForm.addEventListener("submit", async (e) => {
   submitBtn.disabled = true;
   submitBtn.textContent = editingProjectId ? "Saving…" : "Creating…";
 
+  const lat = parseFloat(document.getElementById("p-lat").value);
+  const lng = parseFloat(document.getElementById("p-lng").value);
+  if (Number.isNaN(lat) || Number.isNaN(lng)) {
+    errorBox.textContent = "Site latitude and longitude are required.";
+    errorBox.style.display = "block";
+    submitBtn.disabled = false;
+    submitBtn.textContent = editingProjectId ? "Save changes" : "Create project";
+    return;
+  }
+
   const payload = {
     name: document.getElementById("p-name").value.trim(),
     entity_type: document.getElementById("p-type").value,
     scheme_name: document.getElementById("p-scheme").value.trim() || null,
     address: document.getElementById("p-address").value.trim() || null,
+    latitude: lat,
+    longitude: lng,
   };
 
   try {

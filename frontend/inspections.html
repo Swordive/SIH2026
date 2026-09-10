@@ -12,7 +12,7 @@
 </script>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Inspections — Smart Monitoring &amp; Inspection System</title>
+<title>Inspections — GOV-INSPECT</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 19.2 5v5.6c0 5.3-3.1 9.4-7.2 10.9-4.1-1.5-7.2-5.6-7.2-10.9V5L12 2.4z' fill='%2316294B'/%3E%3Ccircle cx='12' cy='11.1' r='3' fill='%23fff'/%3E%3Ccircle cx='12' cy='11.1' r='1.15' fill='%23B8860B'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -28,7 +28,7 @@
           <circle cx="12" cy="11.1" r="1.15" fill="var(--gold)"/>
         </svg>
       </div>
-      <span>Smart Monitoring<br />&amp; Inspection</span>
+      <span>GOV-INSPECT</span>
     </div>
 
     <nav>
@@ -142,6 +142,34 @@
       </div>
     </form>
 
+    <form class="quick-add-form" id="checkin-form">
+      <p style="margin:0 0 14px; font-size:0.9rem; color:var(--muted);">
+        Check in for: <strong id="checkin-project-name"></strong>
+      </p>
+      <div class="grid">
+        <div class="field">
+          <label>GPS location (required)</label>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <button type="button" class="quick-add-toggle" id="checkin-capture-gps" style="flex:none;">Capture my location</button>
+            <span id="checkin-gps-status" style="font-size:0.82rem; color:var(--muted);">Not captured yet</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="checkin-photo">Attendance selfie (required — verified by AI)</label>
+          <input type="file" id="checkin-photo" accept="image/*" capture="user" required />
+        </div>
+      </div>
+      <p style="margin:0 0 14px; font-size:0.82rem; color:var(--muted);">
+        Both are mandatory and checked automatically: the photo must show exactly one face, and the GPS reading from this device is compared against the project's registered site location — not typed in manually, and not the location of any other computer. Either check failing raises an alert for review.
+      </p>
+      <div class="form-error" id="checkin-error"></div>
+      <p id="checkin-result" style="display:none; margin:0 0 14px; font-size:0.88rem;"></p>
+      <div class="actions">
+        <button type="submit" class="btn-primary" id="checkin-submit" disabled>Capture location first</button>
+        <button type="button" class="quick-add-toggle" id="checkin-cancel">Cancel</button>
+      </div>
+    </form>
+
     <div class="card">
       <table id="inspections-table">
         <thead>
@@ -153,6 +181,7 @@
             <th>Assigned by</th>
             <th>Scheduled</th>
             <th>CCTV Feed</th>
+            <th>AI Check</th>
             <th>Actions</th>
           </tr>
         </thead>

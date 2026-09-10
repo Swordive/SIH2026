@@ -1059,6 +1059,42 @@ td:last-child, th:last-child { padding-right: 22px; }
 
 .alert-row .alert-actions { flex: none; display: flex; align-items: center; gap: 6px; }
 
+/* ---------- Video call (Random VC) ---------- */
+
+.vc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.vc-tile {
+  position: relative;
+  background: #0b1626;
+  border-radius: 14px;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--border-strong);
+}
+
+.vc-tile video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.vc-tile-label {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  background: rgba(10, 18, 32, 0.72);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
 .row-action {
   background: none;
   border: none;

@@ -1,12 +1,13 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user, require_roles
 from app.models.user import User, UserRole
 from app.models.project import Project
+from app.models.alert import Alert
 from app.models.inspection import Inspection, InspectionStatus, InspectionType, InspectionEvidence
 from app.schemas.inspection import (
     InspectionCreate,
@@ -14,12 +15,19 @@ from app.schemas.inspection import (
     InspectionReportSubmit,
     InspectionAssign,
     InspectionUpdate,
-    AttendanceMark,
     EvidenceCreate,
     EvidenceOut,
+    CheckinOut,
 )
 from app.services.assignment import run_random_assignment
+from app.services.ai_vision import detect_faces, InvalidImageError
+from app.services.geofence import distance_meters, GEOFENCE_RADIUS_METERS
+from app.services.dedupe import compute_phash, is_duplicate
+
 router = APIRouter(prefix="/api/inspections", tags=["inspections"])
+
+# Keeps a misbehaving/huge upload from tying up a worker decoding it.
+MAX_CHECKIN_IMAGE_BYTES = 8 * 1024 * 1024  # 8 MB
 
 
 @router.post("/auto-assign", response_model=list[InspectionOut])
@@ -229,36 +237,171 @@ def submit_report(
     return inspection
 
 
-@router.post("/{inspection_id}/attendance", response_model=InspectionOut)
-def mark_attendance(
+@router.post("/{inspection_id}/checkin", response_model=CheckinOut)
+async def checkin(
     inspection_id: uuid.UUID,
-    payload: AttendanceMark,
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+    photo: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        require_roles(UserRole.PMU_INSPECTOR, UserRole.ADMIN)
-    ),
+    current_user: User = Depends(require_roles(UserRole.PMU_INSPECTOR)),
 ):
-    """Marks the assigned inspector as physically present for this
-    inspection, with a timestamp and optional GPS coordinates."""
+    """
+    The one mandatory attendance action for the assigned PMU
+    inspector, physically at the project site: GPS coordinates and a
+    selfie, both required (no optional path -- an inspection with no
+    check-in has no attendance record at all). Nothing here is
+    admin-performable; admins review the results, they don't produce
+    them.
+
+    Two independent AI checks run against the submission, each
+    capable of raising an Alert on its own:
+
+    1. Face detection (see app/services/ai_vision.py) on the photo --
+       flags check-ins where the selfie doesn't show exactly one
+       person (0 faces: blank/stale photo; 2+: someone else's device,
+       a proxy holding up someone else's photo).
+    2. Geofencing (see app/services/geofence.py) -- compares the
+       submitted GPS against the project's registered site
+       coordinates (Project.latitude/longitude, the CCTV feed's
+       actual location), not wherever the browser/device making the
+       request happens to be. Flags check-ins made too far from the
+       registered site. If the project has no registered coordinates
+       yet, this check is skipped (within_geofence/distance_meters
+       come back null) rather than guessed at.
+    3. Duplicate-photo detection (see app/services/dedupe.py) --
+       compares this selfie's perceptual hash against every previous
+       check-in selfie by the same inspector. Flags the classic
+       "photographed once, resubmitted forever" pattern instead of
+       taking a fresh selfie each time.
+    """
     inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
 
-    if (
-        current_user.role == UserRole.PMU_INSPECTOR
-        and inspection.inspector_id != current_user.id
-    ):
+    if inspection.inspector_id != current_user.id:
         raise HTTPException(
             status_code=403, detail="This inspection is not assigned to you"
         )
 
-    inspection.attendance_marked_at = datetime.utcnow()
-    inspection.attendance_latitude = payload.latitude
-    inspection.attendance_longitude = payload.longitude
+    if inspection.status not in (InspectionStatus.PENDING, InspectionStatus.IN_PROGRESS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"This inspection is already {inspection.status.value}",
+        )
+
+    image_bytes = await photo.read()
+    if len(image_bytes) > MAX_CHECKIN_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image too large (max 8MB)")
+
+    try:
+        face_result = detect_faces(image_bytes)
+    except InvalidImageError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    project = db.query(Project).filter(Project.id == inspection.project_id).first()
+
+    face_verified = face_result.face_count == 1
+    checked_at = datetime.utcnow()
+
+    site_distance = None
+    within_geofence = None
+    if project is not None and project.latitude is not None and project.longitude is not None:
+        site_distance = distance_meters(
+            latitude, longitude, project.latitude, project.longitude
+        )
+        within_geofence = site_distance <= GEOFENCE_RADIUS_METERS
+
+    photo_hash = compute_phash(image_bytes)
+    duplicate_of = (
+        db.query(Inspection)
+        .filter(
+            Inspection.inspector_id == current_user.id,
+            Inspection.id != inspection.id,
+            Inspection.attendance_photo_hash.isnot(None),
+        )
+        .all()
+    )
+    duplicate_match = next(
+        (row for row in duplicate_of if is_duplicate(photo_hash, row.attendance_photo_hash)),
+        None,
+    )
+    duplicate_detected = duplicate_match is not None
+
+    inspection.attendance_marked_at = checked_at
+    inspection.attendance_latitude = latitude
+    inspection.attendance_longitude = longitude
+    inspection.attendance_distance_meters = site_distance
+    inspection.attendance_face_checked_at = checked_at
+    inspection.attendance_face_count = face_result.face_count
+    inspection.attendance_face_verified = face_verified
+    inspection.attendance_photo_hash = photo_hash
+    inspection.attendance_duplicate_detected = duplicate_detected
+    if inspection.status == InspectionStatus.PENDING:
+        inspection.status = InspectionStatus.IN_PROGRESS
+
+    alerts_created = []
+
+    if not face_verified:
+        if face_result.face_count == 0:
+            severity = "high"
+            message = (
+                "AI attendance check: no face detected in the check-in "
+                f"photo for inspection {inspection.id} — possible proxy "
+                "attendance."
+            )
+        else:
+            severity = "medium"
+            message = (
+                f"AI attendance check: {face_result.face_count} faces "
+                f"detected in the check-in photo for inspection "
+                f"{inspection.id} — expected exactly one."
+            )
+        db.add(Alert(project_id=inspection.project_id, message=message, severity=severity))
+        alerts_created.append("face")
+
+    if within_geofence is False:
+        db.add(
+            Alert(
+                project_id=inspection.project_id,
+                message=(
+                    "AI attendance check: check-in GPS is "
+                    f"{site_distance:.0f}m from the registered site "
+                    f"location for inspection {inspection.id} — "
+                    "possible incorrect or spoofed location."
+                ),
+                severity="high",
+            )
+        )
+        alerts_created.append("geofence")
+
+    if duplicate_detected:
+        db.add(
+            Alert(
+                project_id=inspection.project_id,
+                message=(
+                    "AI attendance check: the check-in selfie for "
+                    f"inspection {inspection.id} appears to be the same "
+                    f"photo used for a previous check-in (inspection "
+                    f"{duplicate_match.id}) — possible reused/stale photo."
+                ),
+                severity="high",
+            )
+        )
+        alerts_created.append("duplicate_photo")
 
     db.commit()
     db.refresh(inspection)
-    return inspection
+
+    return CheckinOut(
+        face_count=face_result.face_count,
+        face_verified=face_verified,
+        distance_meters=site_distance,
+        within_geofence=within_geofence,
+        duplicate_photo_detected=duplicate_detected,
+        alerts_created=alerts_created,
+        checked_at=checked_at,
+    )
 
 
 @router.post("/{inspection_id}/evidence", response_model=EvidenceOut, status_code=201)

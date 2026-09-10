@@ -11,3 +11,10 @@ alembic==1.13.2
 email-validator==2.2.0
 bcrypt==4.0.1
 apscheduler==3.10.4
+
+# --- AI / computer vision (attendance face-check, see app/services/ai_vision.py) ---
+# headless build: no GUI/X11 deps, correct for a server container.
+# Ships its own Haar Cascade model files, so face detection runs
+# fully offline -- no external API, no network call, no API key.
+opencv-python-headless==4.10.0.84
+numpy==1.26.4

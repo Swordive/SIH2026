@@ -1,4 +1,6 @@
-# Smart Real-Time Monitoring & Inspection Mobile App (SIH 2026 — PS 26095)
+# GOV-INSPECT (SIH 2026 — PS 26095)
+
+Formerly "Smart Real-Time Monitoring & Inspection Mobile App."
 
 Centralized platform for real-time monitoring, surprise inspections, CCTV
 surveillance integration, and random inspection assignment for

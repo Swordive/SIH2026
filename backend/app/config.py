@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # --- App ---
-    APP_NAME: str = "DoSJE Smart Monitoring & Inspection System"
+    APP_NAME: str = "GOV-INSPECT"
     ENV: str = "development"
     DEBUG: bool = True
 

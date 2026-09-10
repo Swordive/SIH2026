@@ -9,7 +9,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.config import settings
 from app.database import Base, engine, SessionLocal
 from app import models  # noqa: F401  (ensures all models are registered on Base)
-from app.api.routes import auth, users, projects, inspections, dashboard, alerts
+from app.api.routes import auth, users, projects, inspections, dashboard, alerts, vc
 from app.core.legacy_enum_migration import normalize_legacy_enum_types
 from app.core.schema_sync import add_missing_columns
 from app.services.assignment import run_random_assignment
@@ -74,6 +74,7 @@ app.include_router(projects.router)
 app.include_router(inspections.router)
 app.include_router(dashboard.router)
 app.include_router(alerts.router)
+app.include_router(vc.router)
 
 @app.get("/api/health")
 def health_check():

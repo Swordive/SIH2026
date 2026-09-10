@@ -14,6 +14,7 @@ async function loadUser() {
     const me = await apiFetch("/api/auth/me");
     document.getElementById("user-name").textContent = me.full_name;
     document.getElementById("user-role").textContent = ROLE_LABELS[me.role] || me.role;
+    hideLiveMonitoringNavIfInspector(me.role);
     return me;
   } catch (err) {
     clearToken();

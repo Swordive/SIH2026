@@ -11,3 +11,6 @@ class DashboardStats(BaseModel):
        active_users: int
        inspections_with_live_feed: int
        unresolved_alerts: int
+       # AI attendance face-checks that came back NOT verified (0 or
+       # 2+ faces) -- see POST /{id}/attendance/face-check.
+       flagged_attendance_checks: int

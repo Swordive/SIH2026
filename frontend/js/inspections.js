@@ -32,14 +32,21 @@ let assigningInspectionId = null;
 let feedInspectionId = null;
 let currentUserId = null;
 let currentUserName = null;
+let currentUserRole = null;
+let myProjectIds = new Set(); // for project_incharge: which projects are theirs
+let checkinInspectionId = null;
+let checkinLatitude = null;
+let checkinLongitude = null;
 
 async function loadUser() {
   try {
     const me = await apiFetch("/api/auth/me");
     currentUserId = me.id;
     currentUserName = me.full_name;
+    currentUserRole = me.role;
     document.getElementById("user-name").textContent = me.full_name;
     document.getElementById("user-role").textContent = ROLE_LABELS[me.role] || me.role;
+    hideLiveMonitoringNavIfInspector(me.role);
     canManage = me.role === "admin" || me.role === "department_official";
     document.getElementById("run-assignment-btn").style.display = canManage
       ? "inline-block"
@@ -69,6 +76,9 @@ async function buildLookups() {
   projectOptions = projects.map((p) => ({ id: p.id, name: p.name }));
   userMap = Object.fromEntries(users.map((u) => [u.id, u.full_name]));
   inspectorOptions = users.filter((u) => u.role === "pmu_inspector" && u.is_active);
+  myProjectIds = new Set(
+    projects.filter((p) => p.incharge_id === currentUserId).map((p) => p.id)
+  );
 }
 
 function formatDate(iso) {
@@ -85,15 +95,108 @@ function inspectorDisplayName(inspectorId) {
   return inspectorId;
 }
 
+// Check-in (GPS + AI face-check) is an inspector-only action on
+// their own pending/in-progress inspections -- it's the thing being
+// verified, so it can't also be performed by the people reviewing
+// the verification.
+function canCheckIn(inspection) {
+  if (inspection.status !== "pending" && inspection.status !== "in_progress") {
+    return false;
+  }
+  return (
+    currentUserRole === "pmu_inspector" &&
+    inspection.inspector_id === currentUserId
+  );
+}
+
+// Random VC check-ins are conducted over a live video call instead of
+// a physical visit. Admin/department official can always sit in
+// (same oversight freedom as everywhere else); the assigned inspector
+// and the project's own incharge can join their own call; nobody
+// else gets a button (the backend enforces this again at the
+// WebSocket layer regardless -- see app/api/routes/vc.py).
+function canJoinVC(inspection) {
+  if (inspection.inspection_type !== "vc_random") return false;
+  if (inspection.status !== "pending" && inspection.status !== "in_progress") {
+    return false;
+  }
+  if (currentUserRole === "admin" || currentUserRole === "department_official") {
+    return true;
+  }
+  if (currentUserRole === "pmu_inspector") {
+    return inspection.inspector_id === currentUserId;
+  }
+  if (currentUserRole === "project_incharge") {
+    return myProjectIds.has(inspection.project_id);
+  }
+  return false;
+}
+
 function actionsCell(inspection) {
-  if (!canManage) return "—";
-  const assignLabel = inspection.inspector_id ? "Reassign" : "Assign";
-  const feedLabel = inspection.cctv_feed_url ? "Edit feed" : "Set feed";
-  return `
-    <button class="row-action" data-action="assign" data-id="${inspection.id}">${assignLabel}</button>
-    <button class="row-action" data-action="feed" data-id="${inspection.id}">${feedLabel}</button>
-    <button class="row-action danger" data-action="delete" data-id="${inspection.id}">Delete</button>
-  `;
+  const buttons = [];
+
+  if (canManage) {
+    const assignLabel = inspection.inspector_id ? "Reassign" : "Assign";
+    const feedLabel = inspection.cctv_feed_url ? "Edit feed" : "Set feed";
+    buttons.push(
+      `<button class="row-action" data-action="assign" data-id="${inspection.id}">${assignLabel}</button>`
+    );
+    buttons.push(
+      `<button class="row-action" data-action="feed" data-id="${inspection.id}">${feedLabel}</button>`
+    );
+  }
+
+  if (canCheckIn(inspection)) {
+    const label = inspection.attendance_marked_at ? "Check in again" : "Check in";
+    buttons.push(
+      `<button class="row-action" data-action="checkin" data-id="${inspection.id}">${label}</button>`
+    );
+  }
+
+  if (canJoinVC(inspection)) {
+    buttons.push(
+      `<a class="row-action" href="video-call.html?inspection=${inspection.id}">Join call</a>`
+    );
+  }
+
+  if (canManage) {
+    buttons.push(
+      `<button class="row-action danger" data-action="delete" data-id="${inspection.id}">Delete</button>`
+    );
+  }
+
+  return buttons.length ? buttons.join("") : "—";
+}
+
+function aiCheckCell(inspection) {
+  if (!inspection.attendance_face_checked_at) {
+    return `<span class="badge status-inactive">Not checked</span>`;
+  }
+
+  const badges = [];
+
+  badges.push(
+    inspection.attendance_face_verified
+      ? `<span class="badge status-active">Face OK</span>`
+      : `<span class="badge severity-high">Face flagged (${inspection.attendance_face_count ?? "?"})</span>`
+  );
+
+  if (inspection.attendance_distance_meters == null) {
+    badges.push(`<span class="badge status-inactive">No site GPS on file</span>`);
+  } else {
+    const meters = Math.round(inspection.attendance_distance_meters);
+    badges.push(
+      meters <= 250
+        ? `<span class="badge status-active">On-site (${meters}m)</span>`
+        : `<span class="badge severity-high">Off-site (${meters}m)</span>`
+    );
+  }
+
+  if (inspection.attendance_duplicate_detected) {
+    badges.push(`<span class="badge severity-high">Reused photo</span>`);
+  }
+
+  return badges.join("<br />");
 }
 
 async function loadInspections() {
@@ -123,6 +226,7 @@ async function loadInspections() {
         <td>${i.ai_assigned ? "AI / automation" : "Manual"}</td>
         <td>${formatDate(i.scheduled_at)}</td>
         <td>${i.cctv_feed_url ? "Connected" : "Not configured"}</td>
+        <td>${aiCheckCell(i)}</td>
         <td>${actionsCell(i)}</td>
       </tr>`)
       .join("");
@@ -298,6 +402,122 @@ feedForm.addEventListener("submit", async (e) => {
   }
 });
 
+// ---- Check-in form (attendance + optional AI face-check) ----
+
+const checkinForm = document.getElementById("checkin-form");
+const checkinSubmitBtn = document.getElementById("checkin-submit");
+const checkinErrorBox = document.getElementById("checkin-error");
+const checkinResultBox = document.getElementById("checkin-result");
+const checkinPhotoInput = document.getElementById("checkin-photo");
+const checkinGpsStatus = document.getElementById("checkin-gps-status");
+
+function updateCheckinSubmitState() {
+  const ready = checkinLatitude != null && checkinLongitude != null;
+  checkinSubmitBtn.disabled = !ready;
+  checkinSubmitBtn.textContent = ready ? "Check in" : "Capture location first";
+}
+
+function openCheckinForm(inspection) {
+  checkinInspectionId = inspection.id;
+  checkinLatitude = null;
+  checkinLongitude = null;
+  document.getElementById("checkin-project-name").textContent =
+    projectMap[inspection.project_id] || inspection.project_id;
+  checkinGpsStatus.textContent = "Not captured yet";
+  checkinErrorBox.style.display = "none";
+  checkinResultBox.style.display = "none";
+  updateCheckinSubmitState();
+  checkinForm.classList.add("open");
+  checkinForm.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function closeCheckinForm() {
+  checkinInspectionId = null;
+  checkinLatitude = null;
+  checkinLongitude = null;
+  checkinForm.classList.remove("open");
+  checkinForm.reset();
+  updateCheckinSubmitState();
+}
+
+document.getElementById("checkin-cancel").addEventListener("click", closeCheckinForm);
+
+document.getElementById("checkin-capture-gps").addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    checkinGpsStatus.textContent = "Geolocation not supported by this browser — check-in requires it";
+    return;
+  }
+  checkinGpsStatus.textContent = "Capturing…";
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      checkinLatitude = pos.coords.latitude;
+      checkinLongitude = pos.coords.longitude;
+      checkinGpsStatus.textContent = `${checkinLatitude.toFixed(5)}, ${checkinLongitude.toFixed(5)}`;
+      updateCheckinSubmitState();
+    },
+    (err) => {
+      checkinGpsStatus.textContent = `Could not get location (${err.message}) — required to check in`;
+      checkinLatitude = null;
+      checkinLongitude = null;
+      updateCheckinSubmitState();
+    },
+    { enableHighAccuracy: true }
+  );
+});
+
+checkinForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  checkinErrorBox.style.display = "none";
+  checkinResultBox.style.display = "none";
+
+  const photoFile = checkinPhotoInput.files[0];
+  if (checkinLatitude == null || checkinLongitude == null) {
+    checkinErrorBox.textContent = "Capture your GPS location before checking in.";
+    checkinErrorBox.style.display = "block";
+    return;
+  }
+  if (!photoFile) {
+    checkinErrorBox.textContent = "An attendance selfie is required to check in.";
+    checkinErrorBox.style.display = "block";
+    return;
+  }
+
+  checkinSubmitBtn.disabled = true;
+  checkinSubmitBtn.textContent = "Checking in…";
+
+  try {
+    const result = await apiUploadForm(
+      `/api/inspections/${checkinInspectionId}/checkin`,
+      { latitude: checkinLatitude, longitude: checkinLongitude, photo: photoFile }
+    );
+
+    const resultLines = [
+      result.face_verified
+        ? "Face check: 1 face detected — verified."
+        : `Face check: ${result.face_count} faces detected — flagged for review.`,
+    ];
+    if (result.within_geofence == null) {
+      resultLines.push("Location check: project has no registered site coordinates yet — skipped.");
+    } else if (result.within_geofence) {
+      resultLines.push(`Location check: ${Math.round(result.distance_meters)}m from the registered site — on-site.`);
+    } else {
+      resultLines.push(`Location check: ${Math.round(result.distance_meters)}m from the registered site — flagged for review.`);
+    }
+    if (result.duplicate_photo_detected) {
+      resultLines.push("Duplicate check: this selfie matches a previous check-in photo — flagged for review.");
+    }
+
+    checkinResultBox.textContent = resultLines.join(" ");
+    checkinResultBox.style.display = "block";
+    await loadInspections();
+  } catch (err) {
+    checkinErrorBox.textContent = err.message;
+    checkinErrorBox.style.display = "block";
+  } finally {
+    updateCheckinSubmitState();
+  }
+});
+
 document.getElementById("inspections-body").addEventListener("click", async (e) => {
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
@@ -315,6 +535,11 @@ document.getElementById("inspections-body").addEventListener("click", async (e) 
     return;
   }
 
+  if (btn.dataset.action === "checkin") {
+    openCheckinForm(inspection);
+    return;
+  }
+
   if (btn.dataset.action === "delete") {
     const confirmed = confirm(
       `Delete this inspection for "${projectMap[inspection.project_id] || inspection.project_id}"? This cannot be undone.`
@@ -327,6 +552,7 @@ document.getElementById("inspections-body").addEventListener("click", async (e) 
       await apiFetch(`/api/inspections/${inspection.id}`, { method: "DELETE" });
       if (assigningInspectionId === inspection.id) closeAssignForm();
       if (feedInspectionId === inspection.id) closeFeedForm();
+      if (checkinInspectionId === inspection.id) closeCheckinForm();
       await loadInspections();
     } catch (err) {
       alert(err.message);

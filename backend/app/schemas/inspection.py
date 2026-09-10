@@ -31,12 +31,20 @@ class InspectionAssign(BaseModel):
     scheduled_at: datetime
 
 
-class AttendanceMark(BaseModel):
-    """Used by the assigned inspector to check in as physically
-    present. GPS is optional -- e.g. a VC_RANDOM video-call
-    inspection may have nothing meaningful to geo-tag."""
-    latitude: float | None = None
-    longitude: float | None = None
+class CheckinOut(BaseModel):
+    """Result of POST /{id}/checkin -- the single, mandatory,
+    inspector-only attendance action: GPS + a selfie, both required,
+    checked against the project's registered site location, against
+    face detection, and against every previous check-in selfie by the
+    same inspector."""
+
+    face_count: int
+    face_verified: bool
+    distance_meters: float | None
+    within_geofence: bool | None  # null if the project has no registered site coordinates
+    duplicate_photo_detected: bool
+    alerts_created: list[str]
+    checked_at: datetime
 
 
 class InspectionOut(BaseModel):
@@ -57,7 +65,13 @@ class InspectionOut(BaseModel):
     attendance_marked_at: datetime | None
     attendance_latitude: float | None
     attendance_longitude: float | None
+    attendance_distance_meters: float | None
+    attendance_face_checked_at: datetime | None
+    attendance_face_count: int | None
+    attendance_face_verified: bool | None
+    attendance_duplicate_detected: bool | None
     created_at: datetime
+
 
 class EvidenceCreate(BaseModel):
     file_url: str

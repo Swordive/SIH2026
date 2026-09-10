@@ -14,6 +14,18 @@
 // config (see ALLOWED_ORIGINS in config.py) allows.
 const API_BASE = window.location.port === "5500" ? "http://localhost:8000" : "";
 
+/**
+ * Same-origin-by-default convention as API_BASE above, but for
+ * WebSocket URLs (ws:// or wss://, matching the page's own protocol).
+ */
+function wsBase() {
+  if (API_BASE) {
+    return API_BASE.replace(/^http/, "ws");
+  }
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}`;
+}
+
 function getToken() {
   return localStorage.getItem("access_token");
 }
@@ -56,6 +68,57 @@ async function apiFetch(path, { method = "GET", body, auth = true } = {}) {
 
   if (res.status === 204) return null;
   return res.json();
+}
+
+/**
+ * apiUploadForm: multipart POST with a mix of plain fields and files
+ * (e.g. the mandatory check-in: latitude/longitude fields plus a
+ * selfie photo, all required by the backend in one request).
+ * Deliberately does NOT set a Content-Type header -- the browser has
+ * to set it itself with the multipart boundary, which it only does
+ * when it builds the body.
+ */
+async function apiUploadForm(path, fields) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const formData = new FormData();
+  for (const [key, value] of Object.entries(fields)) {
+    formData.append(key, value);
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let detail = `Request failed (${res.status})`;
+    try {
+      const data = await res.json();
+      if (data.detail) detail = data.detail;
+    } catch (_) {}
+    throw new Error(detail);
+  }
+
+  return res.json();
+}
+
+/**
+ * PMU inspectors carry out unannounced, independent visits -- being
+ * able to preview a site's live CCTV feed beforehand (or during a
+ * visit) would let them time arrivals or coordinate with site staff
+ * off-camera, defeating the point of an unannounced check. Every
+ * page's loadUser() calls this once the role is known; the actual
+ * page-level enforcement lives in live-monitoring.js, since hiding a
+ * nav link alone doesn't stop someone typing the URL directly.
+ */
+function hideLiveMonitoringNavIfInspector(role) {
+  if (role !== "pmu_inspector") return;
+  const link = document.querySelector('.sidebar nav a[href="live-monitoring.html"]');
+  if (link) link.style.display = "none";
 }
 
 // Login uses OAuth2PasswordRequestForm on the backend, which expects

@@ -12,7 +12,7 @@
 </script>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Users — GOV-INSPECT</title>
+<title>Video Call — GOV-INSPECT</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 19.2 5v5.6c0 5.3-3.1 9.4-7.2 10.9-4.1-1.5-7.2-5.6-7.2-10.9V5L12 2.4z' fill='%2316294B'/%3E%3Ccircle cx='12' cy='11.1' r='3' fill='%23fff'/%3E%3Ccircle cx='12' cy='11.1' r='1.15' fill='%23B8860B'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -34,9 +34,9 @@
     <nav>
       <a href="dashboard.html">Dashboard</a>
       <a href="index.html">Projects</a>
-      <a href="inspections.html">Inspections</a>
+      <a href="inspections.html" class="active">Inspections</a>
       <a href="live-monitoring.html">Live Monitoring</a>
-      <a href="users.html" class="active">Users</a>
+      <a href="users.html">Users</a>
     </nav>
 
     <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle dark mode">
@@ -57,44 +57,36 @@
 
   <main class="main">
     <header>
-      <h1>Users</h1>
-      <div style="display:flex; align-items:center; gap:14px;">
-        <span class="meta" id="user-count"></span>
-        <a class="quick-add-toggle" id="add-user-link" href="register.html" style="text-decoration:none; display:inline-block;">+ Add user</a>
-      </div>
+      <h1>Random VC Check-in</h1>
+      <span class="meta" id="vc-project-name"></span>
     </header>
 
-    <div id="users-error" class="form-error" style="display:none;"></div>
+    <p class="run-status" id="vc-status" style="margin-top:-14px; margin-bottom:20px; font-size:0.88rem;">Connecting…</p>
 
-    <div class="card">
-      <table id="users-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Role</th>
-            <th>Organization</th>
-            <th>Status</th>
-            <th>Joined</th>
-          </tr>
-        </thead>
-        <tbody id="users-body"></tbody>
-      </table>
-      <div class="empty-state" id="empty-state" style="display:none;">
-        <h3>No users yet</h3>
-        <p>Accounts created via registration will appear here.</p>
-      </div>
+    <div id="vc-denied" class="empty-state" style="display:none;">
+      <h3>Can't join this call</h3>
+      <p id="vc-denied-message">You don't have access to this call.</p>
     </div>
 
-    <div class="empty-state" id="denied-state" style="display:none;">
-      <h3>Restricted to admins and department officials</h3>
-      <p>Your role doesn't have access to the users directory.</p>
+    <div id="vc-room">
+      <div class="vc-grid" id="vc-grid">
+        <div class="vc-tile" id="vc-local-tile">
+          <video id="vc-local-video" autoplay playsinline muted></video>
+          <span class="vc-tile-label">You</span>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:20px;">
+        <button type="button" class="quick-add-toggle" id="vc-toggle-mic">Mute mic</button>
+        <button type="button" class="quick-add-toggle" id="vc-toggle-cam">Turn off camera</button>
+        <button type="button" class="btn-primary" id="vc-leave" style="width:auto; padding:10px 22px; background:var(--danger-fg);">Leave call</button>
+      </div>
     </div>
   </main>
 </div>
 
 <script src="js/theme.js"></script>
 <script src="js/api.js"></script>
-<script src="js/users.js"></script>
+<script src="js/video-call.js"></script>
 </body>
 </html>

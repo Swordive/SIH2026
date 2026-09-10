@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user
@@ -8,6 +8,7 @@ from app.models.project import Project
 from app.models.inspection import Inspection, InspectionStatus
 from app.schemas.dashboard import DashboardStats
 from app.models.alert import Alert
+from app.services.geofence import GEOFENCE_RADIUS_METERS
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -50,6 +51,18 @@ def get_dashboard(
 
     unresolved_alerts = db.query(Alert).filter(Alert.resolved == False).count()
 
+    # Scoped the same way as everything else here: a PMU inspector's
+    # dashboard only counts flags from their own check-ins. Any of the
+    # three AI checks -- face detection, geofencing, duplicate-photo
+    # detection -- can flag a check-in.
+    flagged_attendance_checks = inspection_query.filter(
+        or_(
+            Inspection.attendance_face_verified == False,
+            Inspection.attendance_distance_meters > GEOFENCE_RADIUS_METERS,
+            Inspection.attendance_duplicate_detected == True,
+        )
+    ).count()
+
     return DashboardStats(
         total_projects=total_projects,
         total_inspections=inspection_query.count(),
@@ -60,4 +73,5 @@ def get_dashboard(
         active_users=active_users,
         inspections_with_live_feed=inspections_with_live_feed,
         unresolved_alerts=unresolved_alerts,
+        flagged_attendance_checks=flagged_attendance_checks,
     )

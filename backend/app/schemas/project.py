@@ -9,8 +9,12 @@ class ProjectCreate(BaseModel):
     entity_type: EntityType = EntityType.PROJECT
     scheme_name: str | None = None
     address: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
+    # Mandatory: the physical location of the project's CCTV feed /
+    # site, used to geofence-check inspector attendance check-ins
+    # against (see app/services/geofence.py). Without this, a
+    # check-in's GPS has nothing to be verified against.
+    latitude: float
+    longitude: float
     incharge_id: uuid.UUID | None = None
 
 

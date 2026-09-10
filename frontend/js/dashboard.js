@@ -14,6 +14,7 @@ async function loadUser() {
     const me = await apiFetch("/api/auth/me");
     document.getElementById("user-name").textContent = me.full_name;
     document.getElementById("user-role").textContent = ROLE_LABELS[me.role] || me.role;
+    hideLiveMonitoringNavIfInspector(me.role);
 
     // Live Monitoring is now open to every role -- feeds live on
     // individual inspections and /api/inspections already scopes what
@@ -64,6 +65,7 @@ async function loadStats() {
     setStat("stat-in-progress", stats.in_progress_inspections);
     setStat("stat-completed", stats.completed_inspections);
     setStat("stat-missed", stats.missed_inspections);
+    setStat("stat-flagged-attendance", stats.flagged_attendance_checks);
 
     document.getElementById("last-updated").textContent =
       `Updated ${new Date().toLocaleTimeString()}`;

@@ -12,7 +12,7 @@
 </script>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Live Monitoring — Smart Monitoring &amp; Inspection System</title>
+<title>Live Monitoring — GOV-INSPECT</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.4 19.2 5v5.6c0 5.3-3.1 9.4-7.2 10.9-4.1-1.5-7.2-5.6-7.2-10.9V5L12 2.4z' fill='%2316294B'/%3E%3Ccircle cx='12' cy='11.1' r='3' fill='%23fff'/%3E%3Ccircle cx='12' cy='11.1' r='1.15' fill='%23B8860B'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -28,7 +28,7 @@
           <circle cx="12" cy="11.1" r="1.15" fill="var(--gold)"/>
         </svg>
       </div>
-      <span>Smart Monitoring<br />&amp; Inspection</span>
+      <span>GOV-INSPECT</span>
     </div>
 
     <nav>
@@ -66,6 +66,11 @@
     <div class="empty-state" id="empty-state" style="display:none;">
       <h3>No active inspections right now</h3>
       <p>Projects appear here while they have a pending or in-progress inspection. Add a CCTV feed URL when creating or editing a project so it can show a live feed once one comes up.</p>
+    </div>
+
+    <div class="empty-state" id="restricted-state" style="display:none;">
+      <h3>Live feeds aren't available to inspectors</h3>
+      <p>PMU inspectors carry out independent, unannounced visits — being able to watch a site's live feed beforehand would defeat that. This view is available to admins, department officials, and the project's own incharge.</p>
     </div>
   </main>
 </div>
