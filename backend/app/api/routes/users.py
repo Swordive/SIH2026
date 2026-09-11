@@ -11,6 +11,6 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 @router.get("", response_model=list[UserOut])
 def list_users(
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
+    _admin: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL, UserRole.PROJECT_INCHARGE)),
 ):
     return db.query(User).order_by(User.created_at.desc()).all()

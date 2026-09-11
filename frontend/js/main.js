@@ -21,8 +21,12 @@ async function loadUser() {
       ROLE_LABELS[me.role] || me.role;
     hideLiveMonitoringNavIfInspector(me.role);
 
-    // Only admins and department officials can create/edit/delete projects.
-    canManageProjects = me.role === "admin" || me.role === "department_official";
+    // Admins, department officials, and project incharges can
+    // create/edit/delete projects.
+    canManageProjects =
+      me.role === "admin" ||
+      me.role === "department_official" ||
+      me.role === "project_incharge";
     document.getElementById("toggle-add-form").style.display = canManageProjects
       ? "inline-block"
       : "none";
@@ -236,5 +240,12 @@ document.getElementById("projects-body").addEventListener("click", async (e) => 
   }
 });
 
-loadUser();
-loadProjects();
+// loadUser() must finish (and set canManageProjects) before we render
+// the projects table -- otherwise the very first render can happen
+// while canManageProjects is still at its default (false), silently
+// hiding the Edit/Delete buttons for a manager until the next reload.
+async function init() {
+  await loadUser();
+  await loadProjects();
+}
+init();

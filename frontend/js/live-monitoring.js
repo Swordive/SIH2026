@@ -154,6 +154,12 @@ async function loadFeeds() {
   const emptyState = document.getElementById("empty-state");
   const countEl = document.getElementById("feed-count");
 
+  // Alerts on the dashboard link here with ?project=<id> so an
+  // official can jump straight to that project's live feed(s) to
+  // review footage before deciding whether to resolve the alert.
+  const params = new URLSearchParams(window.location.search);
+  const filterProjectId = params.get("project");
+
   try {
     // /api/inspections is scoped server-side per role already (a PMU
     // inspector only ever gets their own assigned inspections back;
@@ -169,15 +175,25 @@ async function loadFeeds() {
 
     // One card per active inspection -- different assignments (even
     // against the same project) show up as separate feeds.
-    const activeInspections = inspections.filter((i) =>
+    let activeInspections = inspections.filter((i) =>
       ACTIVE_INSPECTION_STATUSES.includes(i.status)
     );
+
+    if (filterProjectId) {
+      activeInspections = activeInspections.filter((i) => i.project_id === filterProjectId);
+      const projectName = projectMap[filterProjectId]?.name || "this project";
+      document.querySelector("header h1").textContent = `Live Monitoring — ${projectName}`;
+    }
 
     const withFeeds = activeInspections.filter((i) => i.cctv_feed_url);
     countEl.textContent = `${withFeeds.length} of ${activeInspections.length} active assignments have a live feed`;
 
     if (activeInspections.length === 0) {
       emptyState.style.display = "block";
+      if (filterProjectId) {
+        emptyState.innerHTML =
+          "<h3>No active feed for this project</h3><p>There's no inspection currently in progress for this project with a CCTV feed attached.</p>";
+      }
       return;
     }
     emptyState.style.display = "none";

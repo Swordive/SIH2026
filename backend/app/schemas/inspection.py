@@ -70,6 +70,7 @@ class InspectionOut(BaseModel):
     attendance_face_count: int | None
     attendance_face_verified: bool | None
     attendance_duplicate_detected: bool | None
+    attendance_photo_url: str | None
     created_at: datetime
 
 

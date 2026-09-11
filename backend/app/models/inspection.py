@@ -95,6 +95,12 @@ class Inspection(Base):
     attendance_photo_hash = Column(String(16), nullable=True)
     attendance_duplicate_detected = Column(Boolean, nullable=True)
 
+    # Where the actual check-in selfie itself was saved (see
+    # POST /{id}/checkin), so an attendance alert raised against this
+    # inspection can be reviewed against the real photo later instead
+    # of only the face_count number. NULL until a check-in happens.
+    attendance_photo_url = Column(String(500), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     evidence = relationship("InspectionEvidence", back_populates="inspection")

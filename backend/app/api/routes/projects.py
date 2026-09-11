@@ -7,6 +7,7 @@ from app.api.deps import get_db, require_roles, get_current_user
 from app.models.user import User, UserRole
 from app.models.project import Project
 from app.models.inspection import Inspection, InspectionEvidence
+from app.models.alert import Alert
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectOut
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 def create_project(
     payload: ProjectCreate,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
+    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL, UserRole.PROJECT_INCHARGE)),
 ):
     project = Project(**payload.model_dump())
     db.add(project)
@@ -47,7 +48,7 @@ def update_project(
     project_id: uuid.UUID,
     payload: ProjectUpdate,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
+    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL, UserRole.PROJECT_INCHARGE)),
 ):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -66,15 +67,19 @@ def update_project(
 def delete_project(
     project_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
+    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL, UserRole.PROJECT_INCHARGE)),
 ):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Clear out dependent rows first (evidence -> inspections) since
-    # Inspection.project_id is a required FK -- otherwise Postgres
-    # would reject the delete with a foreign-key violation.
+    # Clear out dependent rows first (evidence -> inspections, and
+    # alerts) since Inspection.project_id and Alert.project_id are
+    # both required FKs -- otherwise Postgres would reject the delete
+    # with a foreign-key violation. Alerts are easy to miss here
+    # because they can exist even without any inspections (e.g. one
+    # posted directly by the AI/CCTV system), so they're cleared
+    # independently of the inspection cleanup below.
     inspection_ids = [
         row.id for row in db.query(Inspection.id).filter(Inspection.project_id == project_id)
     ]
@@ -85,6 +90,8 @@ def delete_project(
         db.query(Inspection).filter(Inspection.project_id == project_id).delete(
             synchronize_session=False
         )
+
+    db.query(Alert).filter(Alert.project_id == project_id).delete(synchronize_session=False)
 
     db.delete(project)
     db.commit()

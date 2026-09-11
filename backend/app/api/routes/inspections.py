@@ -1,5 +1,7 @@
+import mimetypes
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -29,12 +31,20 @@ router = APIRouter(prefix="/api/inspections", tags=["inspections"])
 # Keeps a misbehaving/huge upload from tying up a worker decoding it.
 MAX_CHECKIN_IMAGE_BYTES = 8 * 1024 * 1024  # 8 MB
 
+# Where check-in selfies get saved so an attendance alert can later be
+# reviewed against the actual photo (see checkin() below) instead of
+# only the face_count number. Served back out at /static/checkins/...
+# by the StaticFiles mount in main.py -- created here (module import
+# time) so it exists before that mount is set up.
+CHECKIN_UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent.parent / "uploads" / "checkins"
+CHECKIN_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 
 @router.post("/auto-assign", response_model=list[InspectionOut])
 def auto_assign_inspections(
     max_assignments: int = 5,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
+    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL, UserRole.PROJECT_INCHARGE)),
 ):
     """
     Runs the random assignment engine on demand: picks up to
@@ -54,7 +64,7 @@ def add_manual_inspection(
     inspection_type: InspectionType = InspectionType.SURPRISE,
     cctv_feed_url: str | None = None,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
+    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL, UserRole.PROJECT_INCHARGE)),
 ):
     """
     Adds a single unassigned inspection for a specific project, with
@@ -87,7 +97,7 @@ def add_manual_inspection(
 def create_inspection(
     payload: InspectionCreate,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
+    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL, UserRole.PROJECT_INCHARGE)),
 ):
     """Manual creation with full control, e.g. for a scheduled
     (non-surprise) inspection where the admin already knows the
@@ -130,7 +140,7 @@ def update_inspection(
     inspection_id: uuid.UUID,
     payload: InspectionUpdate,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
+    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL, UserRole.PROJECT_INCHARGE)),
 ):
     """
     Attaches, changes, or clears this specific inspection's CCTV feed.
@@ -156,7 +166,7 @@ def assign_inspection(
     inspection_id: uuid.UUID,
     payload: InspectionAssign,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
+    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL, UserRole.PROJECT_INCHARGE)),
 ):
     """
     Assigns an inspector and a date/time to an inspection that the
@@ -191,7 +201,7 @@ def assign_inspection(
 def delete_inspection(
     inspection_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
+    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL, UserRole.PROJECT_INCHARGE)),
 ):
     inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
     if not inspection:
@@ -226,7 +236,7 @@ def submit_report(
             status_code=403, detail="This inspection is not assigned to you"
         )
 
-        inspection.report_text = payload.report_text
+    inspection.report_text = payload.report_text
     inspection.report_latitude = payload.report_latitude
     inspection.report_longitude = payload.report_longitude
     inspection.status = InspectionStatus.COMPLETED
@@ -299,6 +309,20 @@ async def checkin(
     except InvalidImageError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    # Persist the selfie itself (previously this photo was decoded for
+    # the checks above and then discarded -- there was no way to look
+    # at it again afterwards, which is exactly what "Review footage"
+    # on an attendance alert needs). A fresh uuid per upload (not just
+    # the inspection id) so a re-check-in via "Check in again" doesn't
+    # clobber the file behind an alert already raised against the
+    # previous attempt.
+    ext = mimetypes.guess_extension(photo.content_type or "") or ".jpg"
+    if ext == ".jpe":  # mimetypes' preferred guess for image/jpeg on some platforms
+        ext = ".jpg"
+    photo_filename = f"{inspection.id}_{uuid.uuid4().hex}{ext}"
+    (CHECKIN_UPLOAD_DIR / photo_filename).write_bytes(image_bytes)
+    photo_url = f"/static/checkins/{photo_filename}"
+
     project = db.query(Project).filter(Project.id == inspection.project_id).first()
 
     face_verified = face_result.face_count == 1
@@ -337,6 +361,7 @@ async def checkin(
     inspection.attendance_face_verified = face_verified
     inspection.attendance_photo_hash = photo_hash
     inspection.attendance_duplicate_detected = duplicate_detected
+    inspection.attendance_photo_url = photo_url
     if inspection.status == InspectionStatus.PENDING:
         inspection.status = InspectionStatus.IN_PROGRESS
 
@@ -357,13 +382,23 @@ async def checkin(
                 f"detected in the check-in photo for inspection "
                 f"{inspection.id} — expected exactly one."
             )
-        db.add(Alert(project_id=inspection.project_id, message=message, severity=severity))
+        db.add(
+            Alert(
+                project_id=inspection.project_id,
+                inspection_id=inspection.id,
+                kind="face_check",
+                message=message,
+                severity=severity,
+            )
+        )
         alerts_created.append("face")
 
     if within_geofence is False:
         db.add(
             Alert(
                 project_id=inspection.project_id,
+                inspection_id=inspection.id,
+                kind="geofence",
                 message=(
                     "AI attendance check: check-in GPS is "
                     f"{site_distance:.0f}m from the registered site "
@@ -379,6 +414,8 @@ async def checkin(
         db.add(
             Alert(
                 project_id=inspection.project_id,
+                inspection_id=inspection.id,
+                kind="duplicate_photo",
                 message=(
                     "AI attendance check: the check-in selfie for "
                     f"inspection {inspection.id} appears to be the same "

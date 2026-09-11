@@ -33,9 +33,14 @@ async function loadUser() {
     }
 
     // The Alerts panel mirrors GET/PATCH /api/alerts's own server-side
-    // role check (admin + department_official only) -- everyone else
-    // never sees the section at all rather than hitting a 403.
-    if (me.role === "admin" || me.role === "department_official") {
+    // role check (admin + department_official + project_incharge) --
+    // everyone else never sees the section at all rather than hitting
+    // a 403.
+    if (
+      me.role === "admin" ||
+      me.role === "department_official" ||
+      me.role === "project_incharge"
+    ) {
       document.getElementById("alerts-title").style.display = "flex";
       document.getElementById("alerts-card").style.display = "block";
       await loadProjectsForAlerts();
@@ -95,6 +100,26 @@ function severityBadge(severity) {
   return `<span class="badge ${cls}">${severity}</span>`;
 }
 
+// Alert kinds raised against a specific check-in's selfie (see
+// POST /inspections/{id}/checkin) -- "Review footage" for these
+// should open that actual photo, not the live CCTV feed: the alert
+// is about what's in the photo, and the live feed won't show it
+// (the check-in already happened, possibly hours ago). "geofence"
+// alerts are deliberately excluded here -- they're about the
+// reported GPS coordinates, not the photo, so the live feed (or no
+// link at all) is the more relevant reference.
+const PHOTO_REVIEW_ALERT_KINDS = new Set(["face_check", "duplicate_photo"]);
+
+function reviewFootageAction(a) {
+  if (a.inspection_id && PHOTO_REVIEW_ALERT_KINDS.has(a.kind)) {
+    return `<button class="row-action" data-action="review-photo" data-inspection-id="${a.inspection_id}">Review footage</button>`;
+  }
+  // No inspection tied to this alert (e.g. a general CCTV/AI anomaly
+  // posted in directly) or a geofence alert -- fall back to the live
+  // feed, same as before.
+  return `<a class="row-action" href="live-monitoring.html?project=${a.project_id}" target="_blank" rel="noopener">Review footage</a>`;
+}
+
 function renderAlerts(alerts) {
   const list = document.getElementById("alerts-list");
   const empty = document.getElementById("alerts-empty");
@@ -120,6 +145,7 @@ function renderAlerts(alerts) {
         </div>
       </div>
       <div class="alert-actions">
+        ${reviewFootageAction(a)}
         ${
           a.resolved
             ? `<span class="badge status-active">Resolved</span>`
@@ -153,19 +179,43 @@ document.getElementById("alerts-filter-toggle").addEventListener("click", (e) =>
 });
 
 document.getElementById("alerts-list").addEventListener("click", async (e) => {
-  const btn = e.target.closest('button[data-action="resolve"]');
-  if (!btn) return;
+  const resolveBtn = e.target.closest('button[data-action="resolve"]');
+  if (resolveBtn) {
+    resolveBtn.disabled = true;
+    resolveBtn.textContent = "Resolving…";
+    try {
+      await apiFetch(`/api/alerts/${resolveBtn.dataset.id}/resolve`, { method: "PATCH" });
+      await loadAlerts();
+      await loadStats(); // unresolved_alerts count on the dashboard stats, if ever surfaced
+    } catch (err) {
+      alert(err.message);
+      resolveBtn.disabled = false;
+      resolveBtn.textContent = "Mark resolved";
+    }
+    return;
+  }
 
-  btn.disabled = true;
-  btn.textContent = "Resolving…";
-  try {
-    await apiFetch(`/api/alerts/${btn.dataset.id}/resolve`, { method: "PATCH" });
-    await loadAlerts();
-    await loadStats(); // unresolved_alerts count on the dashboard stats, if ever surfaced
-  } catch (err) {
-    alert(err.message);
-    btn.disabled = false;
-    btn.textContent = "Mark resolved";
+  const photoBtn = e.target.closest('button[data-action="review-photo"]');
+  if (photoBtn) {
+    const originalText = photoBtn.textContent;
+    photoBtn.disabled = true;
+    photoBtn.textContent = "Opening…";
+    try {
+      // The alert only carries inspection_id -- the actual photo URL
+      // lives on the Inspection record, so fetch it fresh each time
+      // rather than caching it on the alert (the file underneath can
+      // change on a re-check-in).
+      const inspection = await apiFetch(`/api/inspections/${photoBtn.dataset.inspectionId}`);
+      if (inspection.attendance_photo_url) {
+        window.open(`${API_BASE}${inspection.attendance_photo_url}`, "_blank", "noopener");
+      } else {
+        alert("No check-in photo is on file for this inspection.");
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+    photoBtn.disabled = false;
+    photoBtn.textContent = originalText;
   }
 });
 

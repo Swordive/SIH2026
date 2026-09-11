@@ -39,7 +39,7 @@ def create_alert(payload: AlertCreate, db: Session = Depends(get_db)):
 def list_alerts(
     unresolved_only: bool = False,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
+    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL, UserRole.PROJECT_INCHARGE)),
 ):
     query = db.query(Alert)
     if unresolved_only:
@@ -51,7 +51,7 @@ def list_alerts(
 def resolve_alert(
     alert_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL)),
+    _user: User = Depends(require_roles(UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL, UserRole.PROJECT_INCHARGE)),
 ):
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
     if not alert:

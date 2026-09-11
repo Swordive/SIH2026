@@ -81,6 +81,17 @@ def health_check():
     return {"status": "ok", "app": settings.APP_NAME}
 
 
+# Serves the check-in selfies saved by POST /inspections/{id}/checkin
+# (see inspections.CHECKIN_UPLOAD_DIR, which creates this directory at
+# import time -- the routers are imported above, before this mount
+# runs, so the directory already exists here). Mounted before the
+# catch-all frontend mount below so it isn't shadowed by it.
+app.mount(
+    "/static/checkins",
+    StaticFiles(directory=inspections.CHECKIN_UPLOAD_DIR),
+    name="checkin-photos",
+)
+
 # Serve the frontend directly from FastAPI so the whole app is one
 # process on one origin -- needed both to avoid the dual-server CORS
 # dance during local dev, and critically so that a single tunnel

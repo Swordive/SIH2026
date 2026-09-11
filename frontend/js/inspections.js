@@ -47,7 +47,10 @@ async function loadUser() {
     document.getElementById("user-name").textContent = me.full_name;
     document.getElementById("user-role").textContent = ROLE_LABELS[me.role] || me.role;
     hideLiveMonitoringNavIfInspector(me.role);
-    canManage = me.role === "admin" || me.role === "department_official";
+    canManage =
+      me.role === "admin" ||
+      me.role === "department_official" ||
+      me.role === "project_incharge";
     document.getElementById("run-assignment-btn").style.display = canManage
       ? "inline-block"
       : "none";
@@ -109,14 +112,15 @@ function canCheckIn(inspection) {
   );
 }
 
-// Random VC check-ins are conducted over a live video call instead of
-// a physical visit. Admin/department official can always sit in
-// (same oversight freedom as everywhere else); the assigned inspector
-// and the project's own incharge can join their own call; nobody
-// else gets a button (the backend enforces this again at the
-// WebSocket layer regardless -- see app/api/routes/vc.py).
+// A video call to check on an inspector isn't limited to the
+// "Random VC check-in" type -- admins/department officials (and a
+// project's own incharge) can call in on an inspector during ANY
+// ongoing inspection (surprise visit, scheduled, or vc_random) to
+// see how it's going. The backend (_can_join in app/api/routes/vc.py)
+// never restricted this by inspection_type either -- it only ever
+// checked role/ownership -- so this mirrors what the server already
+// allows instead of hiding a capability that was really there.
 function canJoinVC(inspection) {
-  if (inspection.inspection_type !== "vc_random") return false;
   if (inspection.status !== "pending" && inspection.status !== "in_progress") {
     return false;
   }
@@ -596,5 +600,17 @@ document.getElementById("logout-btn").addEventListener("click", () => {
   window.location.href = "login.html";
 });
 
-loadUser();
-loadInspections();
+// loadUser() sets currentUserId/currentUserRole/canManage, all of
+// which loadInspections() needs (via buildLookups()'s myProjectIds,
+// and via canManage/canJoinVC in actionsCell) to render the action
+// buttons correctly. Firing both at once raced them: whichever
+// resolved first rendered the table using stale/default values, with
+// nothing to trigger a re-render once the other caught up -- so
+// "Join call", "Assign", "Delete" etc. could silently disappear for
+// an entire page load depending on network timing. Sequencing them
+// fixes that.
+async function init() {
+  await loadUser();
+  await loadInspections();
+}
+init();

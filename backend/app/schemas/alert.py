@@ -14,6 +14,8 @@ class AlertOut(BaseModel):
 
     id: uuid.UUID
     project_id: uuid.UUID
+    inspection_id: uuid.UUID | None
+    kind: str | None
     message: str
     severity: str
     resolved: bool

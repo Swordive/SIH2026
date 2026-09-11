@@ -9,6 +9,12 @@ const ROLE_LABELS = {
   project_incharge: "Project Incharge",
 };
 
+const TYPE_LABELS = {
+  surprise: "Surprise visit",
+  scheduled: "Scheduled",
+  vc_random: "Random VC check-in",
+};
+
 // Public STUN server, used only so each browser can discover its own
 // public address for ICE -- no call audio/video/metadata goes through
 // it. The signaling relay itself (see backend app/api/routes/vc.py)
@@ -228,6 +234,14 @@ async function init() {
     const inspection = await apiFetch(`/api/inspections/${inspectionId}`);
     const projects = await apiFetch("/api/projects");
     const project = projects.find((p) => p.id === inspection.project_id);
+
+    // This call can now be used to check in on an inspector during
+    // ANY inspection type, not just a "Random VC check-in" -- so the
+    // heading needs to reflect what's actually being called into,
+    // instead of a hardcoded "Random VC Check-in" title that would be
+    // misleading for a surprise-visit or scheduled inspection.
+    const typeLabel = TYPE_LABELS[inspection.inspection_type] || inspection.inspection_type;
+    document.querySelector("header h1").textContent = `Video call — ${typeLabel}`;
     document.getElementById("vc-project-name").textContent = project ? project.name : "";
   } catch (err) {
     showDenied("Could not load this inspection.");
