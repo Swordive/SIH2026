@@ -37,6 +37,11 @@ let myProjectIds = new Set(); // for project_incharge: which projects are theirs
 let checkinInspectionId = null;
 let checkinLatitude = null;
 let checkinLongitude = null;
+let reportInspectionId = null;
+let reportLatitude = null;
+let reportLongitude = null;
+let reportPendingFiles = []; // [{file, caption}] queued for upload on submit
+let analysisSummary = {}; // {inspection_id: {overall_score, grade, overall_trend, is_edited}} — non-inspector only
 
 async function loadUser() {
   try {
@@ -136,6 +141,32 @@ function canJoinVC(inspection) {
   return false;
 }
 
+// Submitting the inspection report (text + photo evidence) is an
+// inspector-only action on their own not-yet-completed inspection --
+// once COMPLETED, the report (and the AI analysis built from it) is
+// locked in; resubmission isn't supported from this screen.
+function canSubmitReport(inspection) {
+  if (inspection.status === "completed" || inspection.status === "missed") return false;
+  if (currentUserRole === "pmu_inspector") {
+    return inspection.inspector_id === currentUserId;
+  }
+  // Admins can file a report on anyone's inspection too -- lets you
+  // exercise the AI analysis pipeline (and see the resulting "View
+  // analysis" page) without switching accounts. The backend already
+  // allows this (submit-report and evidence/upload only enforce
+  // ownership for pmu_inspector, not admin); this just surfaces the
+  // button here.
+  return currentUserRole === "admin";
+}
+
+// The AI analysis report is viewable/editable by every role except
+// pmu_inspector (see InspectionAnalysisReport's docstring on the
+// backend) -- and only exists once a report has actually been
+// submitted.
+function canViewAnalysis(inspection) {
+  return canManage && inspection.status === "completed";
+}
+
 function actionsCell(inspection) {
   const buttons = [];
 
@@ -157,6 +188,19 @@ function actionsCell(inspection) {
     );
   }
 
+  if (canSubmitReport(inspection)) {
+    const label = inspection.report_text ? "Update report" : "Submit report";
+    buttons.push(
+      `<button class="row-action" data-action="report" data-id="${inspection.id}">${label}</button>`
+    );
+  }
+
+  if (canViewAnalysis(inspection)) {
+    buttons.push(
+      `<a class="row-action" href="analysis.html?inspection=${inspection.id}">View analysis</a>`
+    );
+  }
+
   if (canJoinVC(inspection)) {
     buttons.push(
       `<a class="row-action" href="video-call.html?inspection=${inspection.id}">Join call</a>`
@@ -171,6 +215,35 @@ function actionsCell(inspection) {
 
   return buttons.length ? buttons.join("") : "—";
 }
+
+// "Report" column: whether the inspector has filed a written report
+// yet, and — for every role except pmu_inspector, who never sees the
+// AI's review of their own work — the resulting score/grade once the
+// AI analysis has run.
+function reportCell(inspection) {
+  if (!inspection.report_text) {
+    return `<span class="badge status-inactive">Not submitted</span>`;
+  }
+  if (currentUserRole === "pmu_inspector") {
+    return `<span class="badge status-active">Submitted</span>`;
+  }
+  const summary = analysisSummary[inspection.id];
+  if (!summary) {
+    return `<span class="badge status-active">Submitted</span>`;
+  }
+  const gradeClass = GRADE_BADGE_CLASS[summary.grade] || "status-active";
+  const trendGlyph = { improved: "▲", declined: "▼", stable: "●", new_baseline: "" }[summary.overall_trend] || "";
+  const editedTag = summary.is_edited ? " · edited" : "";
+  return `<span class="badge ${gradeClass}">${Math.round(summary.overall_score)}/100 · ${summary.grade}${trendGlyph ? " " + trendGlyph : ""}${editedTag}</span>`;
+}
+
+const GRADE_BADGE_CLASS = {
+  "Excellent": "status-active",
+  "Good": "status-active",
+  "Satisfactory": "severity-medium",
+  "Needs Improvement": "severity-high",
+  "Critical": "severity-critical",
+};
 
 function aiCheckCell(inspection) {
   if (!inspection.attendance_face_checked_at) {
@@ -213,6 +286,15 @@ async function loadInspections() {
     await buildLookups();
     populateManualProjectDropdown();
 
+    // Only fetched for roles that are actually allowed to see it --
+    // pmu_inspector would get a 403 (they never see the AI's review
+    // of their own submitted work), so don't even ask.
+    if (canManage) {
+      analysisSummary = await apiFetch("/api/inspections/analysis/summary").catch(() => ({}));
+    } else {
+      analysisSummary = {};
+    }
+
     if (inspections.length === 0) {
       emptyState.style.display = "block";
       tbody.innerHTML = "";
@@ -231,6 +313,7 @@ async function loadInspections() {
         <td>${formatDate(i.scheduled_at)}</td>
         <td>${i.cctv_feed_url ? "Connected" : "Not configured"}</td>
         <td>${aiCheckCell(i)}</td>
+        <td>${reportCell(i)}</td>
         <td>${actionsCell(i)}</td>
       </tr>`)
       .join("");
@@ -522,6 +605,203 @@ checkinForm.addEventListener("submit", async (e) => {
   }
 });
 
+// ---- Report form (written findings + AI-analyzed photo evidence) ----
+
+const reportForm = document.getElementById("report-form");
+const reportSubmitBtn = document.getElementById("report-submit");
+const reportErrorBox = document.getElementById("report-error");
+const reportResultBox = document.getElementById("report-result");
+const reportTextInput = document.getElementById("report-text");
+const reportPhotosInput = document.getElementById("report-photos");
+const reportPhotoList = document.getElementById("report-photo-list");
+const reportGpsStatus = document.getElementById("report-gps-status");
+
+function openReportForm(inspection) {
+  reportInspectionId = inspection.id;
+  reportLatitude = null;
+  reportLongitude = null;
+  reportPendingFiles = [];
+  document.getElementById("report-project-name").textContent =
+    projectMap[inspection.project_id] || inspection.project_id;
+  reportTextInput.value = inspection.report_text || "";
+  reportGpsStatus.textContent = "Not captured";
+  reportErrorBox.style.display = "none";
+  reportResultBox.style.display = "none";
+  reportPhotosInput.value = "";
+  renderReportPhotoList();
+  reportForm.classList.add("open");
+  reportForm.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function closeReportForm() {
+  reportInspectionId = null;
+  reportLatitude = null;
+  reportLongitude = null;
+  reportPendingFiles = [];
+  reportForm.classList.remove("open");
+  reportForm.reset();
+  renderReportPhotoList();
+}
+
+document.getElementById("report-cancel").addEventListener("click", closeReportForm);
+
+document.getElementById("report-capture-gps").addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    reportGpsStatus.textContent = "Geolocation not supported by this browser";
+    return;
+  }
+  reportGpsStatus.textContent = "Capturing…";
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      reportLatitude = pos.coords.latitude;
+      reportLongitude = pos.coords.longitude;
+      reportGpsStatus.textContent = `${reportLatitude.toFixed(5)}, ${reportLongitude.toFixed(5)}`;
+    },
+    (err) => {
+      reportGpsStatus.textContent = `Could not get location (${err.message})`;
+      reportLatitude = null;
+      reportLongitude = null;
+    },
+    { enableHighAccuracy: true }
+  );
+});
+
+// Queues newly picked photos (with an editable caption each) rather
+// than uploading immediately on selection -- the inspector may want
+// to caption several at once before anything hits the network, and a
+// mis-added photo should be removable before it's ever analyzed.
+reportPhotosInput.addEventListener("change", () => {
+  for (const file of reportPhotosInput.files) {
+    reportPendingFiles.push({ file, caption: "", status: "queued" });
+  }
+  reportPhotosInput.value = "";
+  renderReportPhotoList();
+});
+
+function renderReportPhotoList() {
+  if (reportPendingFiles.length === 0) {
+    reportPhotoList.innerHTML = "";
+    return;
+  }
+  reportPhotoList.innerHTML = reportPendingFiles
+    .map((entry, idx) => {
+      const url = URL.createObjectURL(entry.file);
+      const statusBadge = {
+        queued: `<span class="badge status-inactive">Queued</span>`,
+        uploading: `<span class="badge severity-medium">Analyzing…</span>`,
+        done: entry.result
+          ? `<span class="badge status-active">${entry.result.theme_label} · ${formatScoreChips(entry.result.parameter_scores)}</span>`
+          : `<span class="badge status-active">Analyzed</span>`,
+        error: `<span class="badge severity-high">Failed — will retry on submit</span>`,
+      }[entry.status];
+      return `
+      <div class="evidence-upload-row" data-idx="${idx}">
+        <img src="${url}" alt="" class="evidence-thumb" />
+        <div class="evidence-upload-meta">
+          <input type="text" class="evidence-caption-input" data-idx="${idx}"
+            placeholder="Caption (e.g. Boys' washroom, ground floor)" value="${entry.caption.replace(/"/g, "&quot;")}"
+            ${entry.status === "uploading" || entry.status === "done" ? "disabled" : ""} />
+          ${statusBadge}
+          ${entry.result && entry.result.findings && entry.result.findings.length
+            ? `<span class="evidence-finding">${entry.result.findings[0]}</span>`
+            : ""}
+        </div>
+        ${entry.status === "queued" ? `<button type="button" class="row-action danger" data-remove-idx="${idx}">Remove</button>` : ""}
+      </div>`;
+    })
+    .join("");
+}
+
+function formatScoreChips(scores) {
+  if (!scores) return "";
+  return Object.entries(scores)
+    .map(([param, score]) => `${param} ${Math.round(score)}`)
+    .join(", ");
+}
+
+reportPhotoList.addEventListener("input", (e) => {
+  if (e.target.classList.contains("evidence-caption-input")) {
+    const idx = Number(e.target.dataset.idx);
+    if (reportPendingFiles[idx]) reportPendingFiles[idx].caption = e.target.value;
+  }
+});
+
+reportPhotoList.addEventListener("click", (e) => {
+  const removeBtn = e.target.closest("button[data-remove-idx]");
+  if (!removeBtn) return;
+  const idx = Number(removeBtn.dataset.removeIdx);
+  reportPendingFiles.splice(idx, 1);
+  renderReportPhotoList();
+});
+
+reportForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  reportErrorBox.style.display = "none";
+  reportResultBox.style.display = "none";
+
+  if (!reportTextInput.value.trim()) {
+    reportErrorBox.textContent = "Written findings are required.";
+    reportErrorBox.style.display = "block";
+    return;
+  }
+
+  reportSubmitBtn.disabled = true;
+
+  // Upload photos one at a time (not in parallel) so the progress
+  // label and each row's "Analyzing…" badge stay meaningful, and so
+  // one large photo doesn't compete for bandwidth with the rest.
+  const toUpload = reportPendingFiles.filter((e) => e.status === "queued" || e.status === "error");
+  for (let i = 0; i < toUpload.length; i++) {
+    const entry = toUpload[i];
+    entry.status = "uploading";
+    renderReportPhotoList();
+    reportSubmitBtn.textContent = `Analyzing photo ${i + 1} of ${toUpload.length}…`;
+    try {
+      const result = await apiUploadForm(
+        `/api/inspections/${reportInspectionId}/evidence/upload`,
+        { photo: entry.file, caption: entry.caption || "" }
+      );
+      entry.status = "done";
+      entry.result = result;
+    } catch (err) {
+      entry.status = "error";
+      reportErrorBox.textContent = `Could not analyze one of the photos: ${err.message}`;
+      reportErrorBox.style.display = "block";
+      renderReportPhotoList();
+      reportSubmitBtn.disabled = false;
+      reportSubmitBtn.textContent = "Submit report";
+      return;
+    }
+    renderReportPhotoList();
+  }
+
+  reportSubmitBtn.textContent = "Finalizing report…";
+
+  try {
+    await apiFetch(`/api/inspections/${reportInspectionId}/submit-report`, {
+      method: "POST",
+      body: {
+        report_text: reportTextInput.value.trim(),
+        report_latitude: reportLatitude,
+        report_longitude: reportLongitude,
+      },
+    });
+    reportResultBox.textContent =
+      "Report submitted. The AI analysis has been generated" +
+      (currentUserRole === "pmu_inspector" ? " for reviewers to see." : " — open \u201cView analysis\u201d to review it.");
+    reportResultBox.style.display = "block";
+    reportPendingFiles = [];
+    await loadInspections();
+    setTimeout(closeReportForm, 1400);
+  } catch (err) {
+    reportErrorBox.textContent = err.message;
+    reportErrorBox.style.display = "block";
+  } finally {
+    reportSubmitBtn.disabled = false;
+    reportSubmitBtn.textContent = "Submit report";
+  }
+});
+
 document.getElementById("inspections-body").addEventListener("click", async (e) => {
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
@@ -544,6 +824,11 @@ document.getElementById("inspections-body").addEventListener("click", async (e) 
     return;
   }
 
+  if (btn.dataset.action === "report") {
+    openReportForm(inspection);
+    return;
+  }
+
   if (btn.dataset.action === "delete") {
     const confirmed = confirm(
       `Delete this inspection for "${projectMap[inspection.project_id] || inspection.project_id}"? This cannot be undone.`
@@ -557,6 +842,7 @@ document.getElementById("inspections-body").addEventListener("click", async (e) 
       if (assigningInspectionId === inspection.id) closeAssignForm();
       if (feedInspectionId === inspection.id) closeFeedForm();
       if (checkinInspectionId === inspection.id) closeCheckinForm();
+      if (reportInspectionId === inspection.id) closeReportForm();
       await loadInspections();
     } catch (err) {
       alert(err.message);

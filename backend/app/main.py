@@ -92,6 +92,15 @@ app.mount(
     name="checkin-photos",
 )
 
+# Serves the inspection-report evidence photos saved by
+# POST /inspections/{id}/evidence/upload (see
+# inspections.EVIDENCE_UPLOAD_DIR).
+app.mount(
+    "/static/evidence",
+    StaticFiles(directory=inspections.EVIDENCE_UPLOAD_DIR),
+    name="evidence-photos",
+)
+
 # Serve the frontend directly from FastAPI so the whole app is one
 # process on one origin -- needed both to avoid the dual-server CORS
 # dance during local dev, and critically so that a single tunnel

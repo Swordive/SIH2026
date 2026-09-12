@@ -39,6 +39,37 @@ function clearToken() {
 }
 
 /**
+ * A plain fetch() has no timeout: if the server (or the DB it talks
+ * to) never sends a response -- host unreachable, connection
+ * silently dropped instead of refused, backend deadlocked -- the
+ * promise just never settles, and a caller like login.js is stuck
+ * showing "Signing in..." forever with nothing to catch. This
+ * wraps fetch() with an AbortController-based ceiling so every
+ * request either succeeds, fails with the server's actual error, or
+ * fails with a clear "the server didn't respond in time" message --
+ * never hangs indefinitely.
+ */
+const DEFAULT_TIMEOUT_MS = 20000;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error(
+        "The server didn't respond in time. It may be down, waking up from sleep, " +
+        "or unable to reach its database — try again in a moment."
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * apiFetch: wraps fetch() with the API base URL, JSON handling,
  * and the bearer token (when present). Throws on non-2xx with the
  * server's error detail when available.
@@ -51,7 +82,7 @@ async function apiFetch(path, { method = "GET", body, auth = true } = {}) {
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
@@ -88,11 +119,14 @@ async function apiUploadForm(path, fields) {
     formData.append(key, value);
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers,
-    body: formData,
-  });
+  const res = await fetchWithTimeout(
+    `${API_BASE}${path}`,
+    { method: "POST", headers, body: formData },
+    // Photo uploads (esp. evidence analysis) legitimately take longer
+    // than a plain JSON call -- give this one more room before it's
+    // treated as hung.
+    60000
+  );
 
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
@@ -128,7 +162,7 @@ async function login(email, password) {
   params.set("username", email);
   params.set("password", password);
 
-  const res = await fetch(`${API_BASE}/api/auth/login`, {
+  const res = await fetchWithTimeout(`${API_BASE}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),

@@ -170,6 +170,42 @@
       </div>
     </form>
 
+    <form class="quick-add-form" id="report-form">
+      <p style="margin:0 0 14px; font-size:0.9rem; color:var(--muted);">
+        Submit inspection report for: <strong id="report-project-name"></strong>
+      </p>
+      <div class="field" style="margin-bottom:14px;">
+        <label for="report-text">Written findings (required)</label>
+        <textarea id="report-text" rows="4" required
+          placeholder="Describe what you observed — condition of facilities, any issues found, overall impression…"
+          style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface); font:inherit; resize:vertical;"></textarea>
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label>Site location (optional but recommended)</label>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button type="button" class="quick-add-toggle" id="report-capture-gps" style="flex:none;">Capture my location</button>
+          <span id="report-gps-status" style="font-size:0.82rem; color:var(--muted);">Not captured</span>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:6px;">
+        <label for="report-photos">Add photo evidence</label>
+        <input type="file" id="report-photos" accept="image/*" multiple />
+        <p style="margin:6px 0 0; font-size:0.8rem; color:var(--muted);">
+          Each photo is analyzed as soon as it's added: the AI works out what it's a photo of
+          (washroom, corridor, damaged wall, wiring…) and scores only the parameters that theme
+          is actually evidence for. Add a short caption to each — it sharpens the AI's read on the
+          photo — then repeat for as many areas as you covered.
+        </p>
+      </div>
+      <div id="report-photo-list" class="evidence-upload-list"></div>
+      <div class="form-error" id="report-error"></div>
+      <p id="report-result" style="display:none; margin:0 0 14px; font-size:0.88rem;"></p>
+      <div class="actions">
+        <button type="submit" class="btn-primary" id="report-submit">Submit report</button>
+        <button type="button" class="quick-add-toggle" id="report-cancel">Cancel</button>
+      </div>
+    </form>
+
     <div class="card">
       <table id="inspections-table">
         <thead>
@@ -182,6 +218,7 @@
             <th>Scheduled</th>
             <th>CCTV Feed</th>
             <th>AI Check</th>
+            <th>Report</th>
             <th>Actions</th>
           </tr>
         </thead>

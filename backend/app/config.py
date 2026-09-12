@@ -32,5 +32,21 @@ class Settings(BaseSettings):
     # How many projects the daily scheduler auto-assigns inspections to.
     DAILY_AUTO_ASSIGN_COUNT: int = 5
 
+    # --- AI inspection-report analysis (see app/services/ai_inspection_analysis.py) ---
+    # All optional. With none of these set, photo analysis runs
+    # entirely offline via OpenCV heuristics + keyword/caption theme
+    # matching -- identical behaviour to app/services/ai_vision.py's
+    # face-check, and the app works fully out of the box. Setting any
+    # one of these keys upgrades photo analysis to a real vision-
+    # language model for theme detection + scoring; the service tries
+    # providers in VISION_PROVIDER_ORDER and falls back to the next
+    # one (and ultimately to the offline heuristic) on any error, so a
+    # missing key, a bad key, or no network never breaks the feature.
+    ANTHROPIC_API_KEY: str | None = None
+    OPENAI_API_KEY: str | None = None
+    GOOGLE_API_KEY: str | None = None  # Gemini
+    VISION_PROVIDER_ORDER: list[str] = ["anthropic", "openai", "google"]
+    VISION_API_TIMEOUT_SECONDS: float = 20.0
+
 
 settings = Settings()

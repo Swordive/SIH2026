@@ -18,3 +18,10 @@ apscheduler==3.10.4
 # fully offline -- no external API, no network call, no API key.
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
+
+# --- AI inspection-report analysis (see app/services/ai_inspection_analysis.py) ---
+# Used only for the optional hosted-vision-API path (Anthropic/OpenAI/
+# Google) -- the offline OpenCV heuristic path above needs nothing
+# extra. Safe to have installed even when no API key is configured;
+# the service simply never calls out.
+httpx==0.27.2

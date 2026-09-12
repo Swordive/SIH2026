@@ -10,7 +10,14 @@ from app.api.deps import get_db, get_current_user, require_roles
 from app.models.user import User, UserRole
 from app.models.project import Project
 from app.models.alert import Alert
-from app.models.inspection import Inspection, InspectionStatus, InspectionType, InspectionEvidence
+from app.models.inspection import (
+    Inspection,
+    InspectionStatus,
+    InspectionType,
+    InspectionEvidence,
+    InspectionAnalysisReport,
+    ANALYSIS_PARAMETERS,
+)
 from app.schemas.inspection import (
     InspectionCreate,
     InspectionOut,
@@ -20,16 +27,27 @@ from app.schemas.inspection import (
     EvidenceCreate,
     EvidenceOut,
     CheckinOut,
+    AnalysisReportOut,
+    AnalysisReportUpdate,
+    AnalysisHistoryEntry,
 )
 from app.services.assignment import run_random_assignment
 from app.services.ai_vision import detect_faces, InvalidImageError
 from app.services.geofence import distance_meters, GEOFENCE_RADIUS_METERS
 from app.services.dedupe import compute_phash, is_duplicate
+from app.services import ai_inspection_analysis as analysis_engine
 
 router = APIRouter(prefix="/api/inspections", tags=["inspections"])
 
+# Roles allowed to view/edit the AI analysis report -- every role
+# except pmu_inspector. The inspector supplies the raw evidence this
+# is built from, but does not see the resulting review (see
+# InspectionAnalysisReport's docstring in app/models/inspection.py).
+ANALYSIS_VIEWER_ROLES = (UserRole.ADMIN, UserRole.DEPARTMENT_OFFICIAL, UserRole.PROJECT_INCHARGE)
+
 # Keeps a misbehaving/huge upload from tying up a worker decoding it.
 MAX_CHECKIN_IMAGE_BYTES = 8 * 1024 * 1024  # 8 MB
+MAX_EVIDENCE_IMAGE_BYTES = 12 * 1024 * 1024  # 12 MB
 
 # Where check-in selfies get saved so an attendance alert can later be
 # reviewed against the actual photo (see checkin() below) instead of
@@ -38,6 +56,12 @@ MAX_CHECKIN_IMAGE_BYTES = 8 * 1024 * 1024  # 8 MB
 # time) so it exists before that mount is set up.
 CHECKIN_UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent.parent / "uploads" / "checkins"
 CHECKIN_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Where inspection-report evidence photos get saved (see
+# add_evidence_upload() below). Served back out at /static/evidence/...
+# by the StaticFiles mount in main.py.
+EVIDENCE_UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent.parent / "uploads" / "evidence"
+EVIDENCE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @router.post("/auto-assign", response_model=list[InspectionOut])
@@ -224,6 +248,16 @@ def submit_report(
         require_roles(UserRole.PMU_INSPECTOR, UserRole.ADMIN)
     ),
 ):
+    """
+    Finalizes the inspection report. Any evidence photos should be
+    uploaded first via POST /{id}/evidence/upload (each is analyzed
+    individually the moment it's uploaded); this call takes the
+    written report text + geo-tag, marks the inspection COMPLETED,
+    and then rolls every already-analyzed photo up into one
+    inspection-level AI analysis report -- see
+    _generate_analysis_report() below and
+    app/services/ai_inspection_analysis.py for the actual scoring.
+    """
     inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
@@ -244,7 +278,125 @@ def submit_report(
 
     db.commit()
     db.refresh(inspection)
+
+    _generate_analysis_report(db, inspection)
+
+    db.refresh(inspection)
     return inspection
+
+
+def _generate_analysis_report(db: Session, inspection: Inspection) -> InspectionAnalysisReport:
+    """Aggregates every analyzed evidence photo for this inspection
+    (plus the report text) into one InspectionAnalysisReport, and
+    compares it against the most recent previously-completed
+    inspection's analysis for the same project, if one exists. Safe
+    to call again for the same inspection (e.g. report resubmitted) --
+    replaces the existing analysis row rather than duplicating it,
+    but preserves edit_history so manual edits aren't silently lost
+    on a re-submit.
+    """
+    evidence_rows = (
+        db.query(InspectionEvidence)
+        .filter(
+            InspectionEvidence.inspection_id == inspection.id,
+            InspectionEvidence.parameter_scores.isnot(None),
+        )
+        .order_by(InspectionEvidence.captured_at.asc())
+        .all()
+    )
+    photo_records = [
+        (
+            str(row.id),
+            analysis_engine.PhotoAnalysis(
+                theme=row.theme,
+                theme_label=row.theme_label,
+                confidence=row.theme_confidence or 0.5,
+                scores=row.parameter_scores or {},
+                findings=row.ai_findings or [],
+                quality_flags=row.quality_flags or {},
+                source=row.analysis_source or "heuristic",
+            ),
+        )
+        for row in evidence_rows
+    ]
+
+    aggregated = analysis_engine.aggregate_analysis(photo_records, inspection.report_text or "")
+
+    # Most recent COMPLETED inspection for the same project that
+    # already has its own analysis, excluding this one -- "previous"
+    # is by completion time, not creation time, so a late-filed report
+    # for an earlier visit doesn't jump the queue.
+    previous = (
+        db.query(InspectionAnalysisReport)
+        .join(Inspection, InspectionAnalysisReport.inspection_id == Inspection.id)
+        .filter(
+            Inspection.project_id == inspection.project_id,
+            Inspection.id != inspection.id,
+            Inspection.status == InspectionStatus.COMPLETED,
+        )
+        .order_by(Inspection.completed_at.desc())
+        .first()
+    )
+
+    comparison_deltas = comparison_summary = overall_trend = None
+    previous_analysis_id = None
+    if previous is not None:
+        previous_analysis_id = previous.id
+        previous_completed_at = (
+            previous.inspection.completed_at if previous.inspection else None
+        )
+        comparison_deltas, comparison_summary, overall_trend = analysis_engine.compare_analyses(
+            current_scores=aggregated.parameter_scores,
+            current_overall=aggregated.overall_score,
+            previous_scores=previous.parameter_scores,
+            previous_overall=previous.overall_score,
+            previous_date=previous_completed_at,
+        )
+    else:
+        overall_trend = "new_baseline"
+
+    existing = (
+        db.query(InspectionAnalysisReport)
+        .filter(InspectionAnalysisReport.inspection_id == inspection.id)
+        .first()
+    )
+
+    if existing is None:
+        existing = InspectionAnalysisReport(
+            inspection_id=inspection.id,
+            project_id=inspection.project_id,
+        )
+        db.add(existing)
+
+    existing.ai_overall_score = aggregated.overall_score
+    existing.ai_grade = aggregated.grade
+    existing.ai_parameter_scores = aggregated.parameter_scores
+    existing.ai_parameter_evidence_counts = aggregated.parameter_evidence_counts
+    existing.ai_summary = aggregated.summary
+    existing.theme_breakdown = aggregated.theme_breakdown
+
+    # A re-submit (report edited/resubmitted before anyone reviewed
+    # it) refreshes the working copy from the new AI output too; once
+    # a human has actually edited the report (is_edited=True), a
+    # re-submit no longer silently overwrites their edits -- the new
+    # AI output is still recorded in ai_* above for reference, but the
+    # working copy is left alone.
+    if not existing.is_edited:
+        existing.overall_score = aggregated.overall_score
+        existing.grade = aggregated.grade
+        existing.parameter_scores = aggregated.parameter_scores
+        existing.summary = aggregated.summary
+
+    existing.previous_analysis_id = previous_analysis_id
+    existing.comparison_deltas = comparison_deltas
+    existing.comparison_summary = comparison_summary
+    existing.overall_trend = overall_trend
+    existing.analysis_source = aggregated.source
+    existing.generated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(existing)
+    return existing
 
 
 @router.post("/{inspection_id}/checkin", response_model=CheckinOut)
@@ -448,6 +600,11 @@ def add_evidence(
        db: Session = Depends(get_db),
        _user: User = Depends(get_current_user),
    ):
+       """Attaches an already-hosted file by URL, with no AI analysis
+       (there's no image to analyze -- just a reference). For a photo
+       the inspector is uploading directly from the field, use
+       POST /{id}/evidence/upload instead, which runs it through the
+       AI theme/parameter analysis pipeline immediately."""
        inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
        if not inspection:
            raise HTTPException(status_code=404, detail="Inspection not found")
@@ -463,6 +620,80 @@ def add_evidence(
        return evidence
 
 
+@router.post("/{inspection_id}/evidence/upload", response_model=EvidenceOut, status_code=201)
+async def add_evidence_upload(
+    inspection_id: uuid.UUID,
+    photo: UploadFile = File(...),
+    caption: str | None = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.PMU_INSPECTOR, UserRole.ADMIN)),
+):
+    """
+    The field-upload path for inspection-report evidence: the
+    inspector attaches a photo (with an optional short caption, e.g.
+    "Boys' washroom, ground floor") while filling out their report,
+    before calling POST /{id}/submit-report.
+
+    The photo is run through app/services/ai_inspection_analysis.py
+    immediately, right here: its theme is detected (from the caption/
+    report-text keywords, or from a hosted vision API if one is
+    configured -- see app/services/vision_api_client.py), and it's
+    scored on whichever quality parameters that theme implies. The
+    per-photo results are stored on the InspectionEvidence row itself;
+    submit-report later rolls every photo's results up into one
+    inspection-level report.
+    """
+    inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+
+    if (
+        current_user.role == UserRole.PMU_INSPECTOR
+        and inspection.inspector_id != current_user.id
+    ):
+        raise HTTPException(status_code=403, detail="This inspection is not assigned to you")
+
+    image_bytes = await photo.read()
+    if len(image_bytes) > MAX_EVIDENCE_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image too large (max 12MB)")
+
+    ext = mimetypes.guess_extension(photo.content_type or "") or ".jpg"
+    if ext == ".jpe":
+        ext = ".jpg"
+    filename = f"{inspection.id}_{uuid.uuid4().hex}{ext}"
+    (EVIDENCE_UPLOAD_DIR / filename).write_bytes(image_bytes)
+    file_url = f"/static/evidence/{filename}"
+
+    try:
+        result = analysis_engine.analyze_photo(
+            image_bytes,
+            caption=caption,
+            context_text=inspection.report_text or "",
+            media_type=photo.content_type or "image/jpeg",
+        )
+    except InvalidImageError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    evidence = InspectionEvidence(
+        inspection_id=inspection_id,
+        file_url=file_url,
+        file_type="image",
+        caption=caption,
+        theme=result.theme,
+        theme_label=result.theme_label,
+        theme_confidence=result.confidence,
+        parameter_scores=result.scores,
+        ai_findings=result.findings,
+        quality_flags=result.quality_flags,
+        analysis_source=result.source,
+        analyzed_at=datetime.utcnow(),
+    )
+    db.add(evidence)
+    db.commit()
+    db.refresh(evidence)
+    return evidence
+
+
 @router.get("/{inspection_id}/evidence", response_model=list[EvidenceOut])
 def list_evidence(
        inspection_id: uuid.UUID,
@@ -475,3 +706,172 @@ def list_evidence(
            .order_by(InspectionEvidence.captured_at.desc())
            .all()
        )
+
+
+@router.delete("/{inspection_id}/evidence/{evidence_id}", status_code=204)
+def delete_evidence(
+    inspection_id: uuid.UUID,
+    evidence_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.PMU_INSPECTOR, UserRole.ADMIN)),
+):
+    """Lets an inspector remove a photo they uploaded by mistake
+    before submitting the report. Only available before submission --
+    once an inspection is COMPLETED its evidence is part of the
+    generated analysis and stays put."""
+    inspection = db.query(Inspection).filter(Inspection.id == inspection_id).first()
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    if (
+        current_user.role == UserRole.PMU_INSPECTOR
+        and inspection.inspector_id != current_user.id
+    ):
+        raise HTTPException(status_code=403, detail="This inspection is not assigned to you")
+    if inspection.status == InspectionStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Cannot remove evidence from a completed inspection")
+
+    evidence = (
+        db.query(InspectionEvidence)
+        .filter(InspectionEvidence.id == evidence_id, InspectionEvidence.inspection_id == inspection_id)
+        .first()
+    )
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+
+    db.delete(evidence)
+    db.commit()
+    return None
+
+
+# --- AI analysis report: view / edit / history --------------------
+# Every endpoint below is off-limits to pmu_inspector by design -- see
+# ANALYSIS_VIEWER_ROLES and InspectionAnalysisReport's docstring.
+
+
+@router.get("/{inspection_id}/analysis", response_model=AnalysisReportOut)
+def get_analysis(
+    inspection_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_roles(*ANALYSIS_VIEWER_ROLES)),
+):
+    analysis = (
+        db.query(InspectionAnalysisReport)
+        .filter(InspectionAnalysisReport.inspection_id == inspection_id)
+        .first()
+    )
+    if not analysis:
+        raise HTTPException(
+            status_code=404,
+            detail="No analysis report yet -- the inspection report hasn't been submitted.",
+        )
+    return analysis
+
+
+@router.patch("/{inspection_id}/analysis", response_model=AnalysisReportOut)
+def update_analysis(
+    inspection_id: uuid.UUID,
+    payload: AnalysisReportUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*ANALYSIS_VIEWER_ROLES)),
+):
+    analysis = (
+        db.query(InspectionAnalysisReport)
+        .filter(InspectionAnalysisReport.inspection_id == inspection_id)
+        .first()
+    )
+    if not analysis:
+        raise HTTPException(status_code=404, detail="No analysis report to edit yet")
+
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        return analysis
+
+    changes = {}
+    if "overall_score" in updates and updates["overall_score"] != analysis.overall_score:
+        changes["overall_score"] = {"from": analysis.overall_score, "to": updates["overall_score"]}
+        analysis.overall_score = updates["overall_score"]
+    if "grade" in updates and updates["grade"] != analysis.grade:
+        changes["grade"] = {"from": analysis.grade, "to": updates["grade"]}
+        analysis.grade = updates["grade"]
+    if "summary" in updates and updates["summary"] != analysis.summary:
+        changes["summary"] = {"from": "(previous text)", "to": "(edited)"}
+        analysis.summary = updates["summary"]
+    if "parameter_scores" in updates:
+        new_scores = dict(analysis.parameter_scores or {})
+        param_changes = {}
+        for param, value in updates["parameter_scores"].items():
+            if param not in ANALYSIS_PARAMETERS:
+                continue
+            old_value = new_scores.get(param)
+            if old_value != value:
+                param_changes[param] = {"from": old_value, "to": value}
+            new_scores[param] = value
+        if param_changes:
+            changes["parameter_scores"] = param_changes
+            analysis.parameter_scores = new_scores
+
+    if changes:
+        analysis.is_edited = True
+        analysis.last_edited_by_id = current_user.id
+        analysis.last_edited_at = datetime.utcnow()
+        history = list(analysis.edit_history or [])
+        history.append({
+            "editor_id": str(current_user.id),
+            "editor_name": current_user.full_name,
+            "edited_at": analysis.last_edited_at.isoformat(),
+            "changes": changes,
+        })
+        analysis.edit_history = history
+
+    db.commit()
+    db.refresh(analysis)
+    return analysis
+
+
+@router.get("/project/{project_id}/analysis-history", response_model=list[AnalysisHistoryEntry])
+def project_analysis_history(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_roles(*ANALYSIS_VIEWER_ROLES)),
+):
+    """Every analyzed inspection for a project, oldest first -- the
+    trend line the comparison view on the analysis page is built on
+    top of."""
+    rows = (
+        db.query(InspectionAnalysisReport)
+        .join(Inspection, InspectionAnalysisReport.inspection_id == Inspection.id)
+        .filter(Inspection.project_id == project_id)
+        .order_by(Inspection.completed_at.asc())
+        .all()
+    )
+    return [
+        AnalysisHistoryEntry(
+            inspection_id=row.inspection_id,
+            completed_at=row.inspection.completed_at if row.inspection else None,
+            overall_score=row.overall_score,
+            grade=row.grade,
+            is_edited=row.is_edited,
+        )
+        for row in rows
+    ]
+
+
+@router.get("/analysis/summary")
+def analysis_summary(
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_roles(*ANALYSIS_VIEWER_ROLES)),
+):
+    """Lightweight {inspection_id: {overall_score, grade, overall_trend}}
+    map for every analyzed inspection -- lets the inspections table
+    show a score/grade badge per row without an N+1 fetch per
+    inspection. Never exposed to pmu_inspector."""
+    rows = db.query(InspectionAnalysisReport).all()
+    return {
+        str(row.inspection_id): {
+            "overall_score": row.overall_score,
+            "grade": row.grade,
+            "overall_trend": row.overall_trend,
+            "is_edited": row.is_edited,
+        }
+        for row in rows
+    }
